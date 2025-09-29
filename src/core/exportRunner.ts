@@ -3,7 +3,7 @@ import type { IncrementalDiffResult } from '../services/incrementalDiff.js';
 import type { MarkdownTransformResult } from '../transform/index.js';
 
 import { ConfluenceApi } from '../confluence/index.js';
-import { MarkdownTransformer } from '../transform/index.js';
+import { EnhancedMarkdownTransformer } from '../transform/enhancedMarkdownTransformer.js';
 import { 
   loadManifest, 
   saveManifest, 
@@ -51,7 +51,7 @@ export type ExportPhase =
 export class ExportRunner {
   private api: ConfluenceApi;
   private config: ExportConfig;
-  private transformer: MarkdownTransformer;
+  private transformer: EnhancedMarkdownTransformer;
   private progress: ExportProgress;
   private limit: ReturnType<typeof pLimit>;
 
@@ -63,7 +63,7 @@ export class ExportRunner {
       password: config.password,
       retry: config.retry
     });
-    this.transformer = new MarkdownTransformer();
+    this.transformer = new EnhancedMarkdownTransformer();
     this.limit = pLimit(config.concurrency || 5);
     
     this.progress = {
@@ -292,10 +292,11 @@ export class ExportRunner {
             bodyLength: page.bodyStorage?.length || 0
           });
           
-          const result = this.transformer.transform(page, {
+          const result = await this.transformer.transformWithUserResolution(page, {
             currentPageId: page.id,
             spaceKey: this.config.spaceKey,
-            baseUrl: this.config.baseUrl
+            baseUrl: this.config.baseUrl,
+            api: this.api
           });
           
           results.set(page.id, result);
@@ -306,7 +307,8 @@ export class ExportRunner {
             title: page.title,
             markdownLength: result.content.length,
             links: result.links.length,
-            attachments: result.attachments.length
+            attachments: result.attachments.length,
+            users: result.users.length
           });
           
         } catch (error) {

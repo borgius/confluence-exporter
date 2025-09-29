@@ -52,6 +52,20 @@ export interface ListAttachmentsOptions {
   mediaType?: string;
 }
 
+export interface User {
+  userKey: string;
+  username: string;
+  displayName: string;
+  profilePicture: {
+    path: string;
+    width: number;
+    height: number;
+    isDefault: boolean;
+  };
+  type: string;
+  email?: string;
+}
+
 export class ConfluenceApi {
   private http: HttpClient;
 
@@ -247,5 +261,33 @@ export class ConfluenceApi {
 
       start += limit;
     }
+  }
+
+  /**
+   * Get user information by user key
+   */
+  async getUser(userKey: string): Promise<User> {
+    const response = await this.http.get<User>(`/rest/api/user`, {
+      params: {
+        key: userKey,
+        expand: 'details.personal'
+      }
+    });
+
+    return response;
+  }
+
+  /**
+   * Get user information by username
+   */
+  async getUserByUsername(username: string): Promise<User> {
+    const response = await this.http.get<User>(`/rest/api/user`, {
+      params: {
+        username: username,
+        expand: 'details.personal'
+      }
+    });
+
+    return response;
   }
 }

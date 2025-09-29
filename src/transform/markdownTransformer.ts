@@ -5,6 +5,7 @@ export interface MarkdownTransformResult {
   frontMatter: Record<string, unknown>;
   links: LinkExtraction[];
   attachments: AttachmentReference[];
+  users: UserReference[];
 }
 
 export interface LinkExtraction {
@@ -22,6 +23,13 @@ export interface AttachmentReference {
   resolvedPath?: string; // Deferred until attachments are downloaded
 }
 
+export interface UserReference {
+  userKey: string;
+  username?: string; // Resolved from API
+  displayName?: string; // Resolved from API
+  resolvedUrl?: string; // Deferred until user info is fetched
+}
+
 export interface TransformContext {
   currentPageId: string;
   spaceKey: string;
@@ -36,9 +44,10 @@ export class MarkdownTransformer {
     const content = page.bodyStorage || '';
     const links: LinkExtraction[] = [];
     const attachments: AttachmentReference[] = [];
+    const users: UserReference[] = [];
 
     // Transform the content and extract references
-    const markdownContent = this.transformStorageToMarkdown(content, context, links, attachments);
+    const markdownContent = this.transformStorageToMarkdown(content, context, links, attachments, users);
 
     // Build front matter
     const frontMatter = this.buildFrontMatter(page, context);
@@ -47,7 +56,8 @@ export class MarkdownTransformer {
       content: markdownContent,
       frontMatter,
       links,
-      attachments
+      attachments,
+      users
     };
   }
 
@@ -55,7 +65,8 @@ export class MarkdownTransformer {
     content: string,
     context: TransformContext,
     links: LinkExtraction[],
-    attachments: AttachmentReference[]
+    attachments: AttachmentReference[],
+    users: UserReference[]
   ): string {
     let result = content;
 
@@ -73,6 +84,9 @@ export class MarkdownTransformer {
     
     // Transform tables
     result = this.transformTables(result);
+    
+    // Transform user links and extract them
+    result = this.transformUserLinks(result, context, users);
     
     // Transform links and extract them for later resolution
     result = this.transformLinks(result, context, links);
@@ -180,6 +194,41 @@ export class MarkdownTransformer {
 
       return rows.length > 0 ? rows.join('\n') + '\n\n' : '';
     });
+  }
+
+  private transformUserLinks(
+    content: string,
+    context: TransformContext,
+    users: UserReference[]
+  ): string {
+    return content.replace(/<ac:link[^>]*><ri:user[^>]*ri:userkey="([^"]*)"[^>]*\/><\/ac:link>/gi, (_match, userKey) => {
+      // Extract a username-like identifier from the userKey
+      // This is a placeholder - in real implementation, you'd call the API
+      const extractedId = this.extractUserIdFromKey(userKey);
+      
+      const userRef: UserReference = {
+        userKey,
+        resolvedUrl: `${context.baseUrl}/display/~${extractedId}`
+      };
+
+      users.push(userRef);
+
+      // Create a user mention link
+      return `[@user:${extractedId}](${userRef.resolvedUrl})`;
+    });
+  }
+
+  /**
+   * Placeholder method to extract a user identifier from userKey
+   * In a real implementation, this would make an API call to resolve the username
+   */
+  private extractUserIdFromKey(userKey: string): string {
+    // Simple heuristic: take last 8 characters as fallback
+    // In real implementation, you would:
+    // 1. Call this.api.getUser(userKey) to get actual username
+    // 2. Cache the results to avoid duplicate API calls
+    // 3. Handle errors gracefully
+    return userKey.slice(-8);
   }
 
   private transformLinks(

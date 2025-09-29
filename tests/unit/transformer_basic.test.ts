@@ -352,6 +352,36 @@ function hello() {
     });
   });
 
+  describe('user link transformations', () => {
+    it('should transform user links and extract user information', () => {
+      const htmlWithUserLinks = `
+        <p>Contact the team lead <ac:link><ri:user ri:userkey="ff8080817a854a2c017a9b5dc5490034" /></ac:link> for more info.</p>
+        <p>Also reach out to <ac:link><ri:user ri:userkey="ff808081758e360e0175d1951c860088" /></ac:link> if needed.</p>
+      `;
+      
+      const mockPage: Page = {
+        id: 'test',
+        title: 'Test Page',
+        type: 'page',
+        bodyStorage: htmlWithUserLinks
+      };
+      
+      const context: TransformContext = {
+        currentPageId: 'test',
+        spaceKey: 'TEST',
+        baseUrl: 'https://test.com'
+      };
+      
+      const result = transformer.transform(mockPage, context);
+      
+      expect(result.content).toContain('[@user:c5490034](https://test.com/display/~c5490034)');
+      expect(result.content).toContain('[@user:1c860088](https://test.com/display/~1c860088)');
+      expect(result.users).toHaveLength(2);
+      expect(result.users[0].userKey).toBe('ff8080817a854a2c017a9b5dc5490034');
+      expect(result.users[1].userKey).toBe('ff808081758e360e0175d1951c860088');
+    });
+  });
+
   describe('front matter generation', () => {
     it('should generate proper front matter for pages', () => {
       const mockPage: Page = {
@@ -397,6 +427,7 @@ function hello() {
           expect(result.frontMatter).toBeDefined();
           expect(result.links).toBeDefined();
           expect(result.attachments).toBeDefined();
+          expect(result.users).toBeDefined();
         }).not.toThrow(`Failed to transform fixture ${index + 1}: ${page.title}`);
       });
     });

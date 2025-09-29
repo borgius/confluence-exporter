@@ -50,13 +50,13 @@ There is a Triage Meeting once each business day at 9:15am (ET). Tickets will be
 
 If you need a ticket addressed before the next triage meeting please contact one of the following:
 
-- <ac:link>
-- <ac:link>
-- <ac:link>
-- <ac:link>
-- <ac:link>
-- <ac:link>
-- <ac:link>
+- [@Pandey, Vinay](https://confluence.fmr.com/display/~a693418)
+- [@Kikkuru, Baby Mounika](https://confluence.fmr.com/display/~a676686)
+- [@Shore, Isaac](https://confluence.fmr.com/display/~a684601)
+- [@Mutati, Sheetal](https://confluence.fmr.com/display/~a684405)
+- [@a684601](https://confluence.fmr.com/display/~a684601)
+- [@Midgett, Beth](https://confluence.fmr.com/display/~a703905)
+- [@Byers, Jack](https://confluence.fmr.com/display/~a623715)
 
 ### Jira Workflow
 

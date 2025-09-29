@@ -35,6 +35,20 @@ export interface Attachment {
   localPath?: string; // relative path where stored locally
 }
 
+export interface User {
+  userKey: string;
+  username: string;
+  displayName: string;
+  profilePicture?: {
+    path: string;
+    width: number;
+    height: number;
+    isDefault: boolean;
+  };
+  type: string;
+  email?: string;
+}
+
 export type ManifestEntryStatus = 'exported' | 'changed' | 'added' | 'removed' | 'denied' | 'skipped' | 'unchanged';
 
 export interface ManifestEntry {
