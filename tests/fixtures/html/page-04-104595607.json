@@ -1,0 +1,30 @@
+{
+  "id": "104595607",
+  "title": "Making a template for Confluence Pages",
+  "type": "page",
+  "version": 2,
+  "parentId": "104595816",
+  "ancestors": [
+    {
+      "id": "95956404",
+      "title": "FCS Fidelity Charitable"
+    },
+    {
+      "id": "966215450",
+      "title": "FC DevOps"
+    },
+    {
+      "id": "1775551740",
+      "title": "Staging From NCSDEVOPS"
+    },
+    {
+      "id": "104595779",
+      "title": "Team Area"
+    },
+    {
+      "id": "104595816",
+      "title": "How-To-Team-Articles"
+    }
+  ],
+  "bodyStorage": "<ac:layout><ac:layout-section ac:type=\"single\"><ac:layout-cell><p>Give your authors a helping hand by using templates in your documentation space. You will need Space Administrator permissions to create templates.</p><p>To create a template:</p><ol><li>Go to &quot;Space Tools&quot; in the sidebar, select &quot;Content Tools&quot; and create a new template.</li><li>Click &quot;Page Layout&quot; and add sections and columns to your page.</li><li>Add headings and sub-headings as needed.</li><li>Choose &quot;Instructional Text&quot; from the &quot;Template&quot; menu and add text that is only visible in the editor.</li><li>Save your template.</li></ol><p>Your template will become available in the Create dialog for this space.</p></ac:layout-cell></ac:layout-section><ac:layout-section ac:type=\"two_left_sidebar\"><ac:layout-cell><p><strong>Related pages</strong></p><p><ac:structured-macro ac:name=\"contentbylabel\"><ac:parameter ac:name=\"spaces\"><ri:space ri:space-key=\"AP001330\" /></ac:parameter><ac:parameter ac:name=\"showLabels\">false</ac:parameter><ac:parameter ac:name=\"sort\">title</ac:parameter><ac:parameter ac:name=\"labels\">documentation-space-sample</ac:parameter><ac:parameter ac:name=\"showSpace\">false</ac:parameter><ac:parameter ac:name=\"type\">page</ac:parameter></ac:structured-macro></p></ac:layout-cell><ac:layout-cell><ac:structured-macro ac:name=\"info\"><ac:parameter ac:name=\"title\">Useful hint</ac:parameter><ac:rich-text-body><p><em>Confluence Administrators can also make templates that are available across your whole Confluence instance.</em></p></ac:rich-text-body></ac:structured-macro></ac:layout-cell></ac:layout-section></ac:layout>"
+}

@@ -161,22 +161,58 @@ export class ExportRunner {
     const pages: Page[] = [];
     
     try {
+      logger.info('Starting to iterate pages', { 
+        spaceKey: this.config.spaceKey,
+        limit: this.config.limit 
+      });
+      
+      let pageCount = 0;
       for await (const page of this.api.iteratePages(this.config.spaceKey)) {
+        pageCount++;
+        logger.info('Processing page', { 
+          pageId: page.id, 
+          title: page.title, 
+          pageNumber: pageCount,
+          rootPageId: this.config.rootPageId 
+        });
+        
         // Apply root page filter if specified
         if (this.config.rootPageId && !this.isInSubtree(page, this.config.rootPageId)) {
+          logger.info('Skipping page - not in subtree', { 
+            pageId: page.id, 
+            title: page.title,
+            rootPageId: this.config.rootPageId 
+          });
           continue;
         }
 
+        logger.info('Fetching full page content', { pageId: page.id, title: page.title });
         // Get full page content
         const fullPage = await this.api.getPageWithBody(page.id);
         pages.push(fullPage);
+        logger.info('Page content fetched successfully', { 
+          pageId: page.id, 
+          title: page.title, 
+          totalPages: pages.length,
+          bodyLength: fullPage.bodyStorage?.length || 0
+        });
+
+        // Check limit after successfully processing a page
+        if (this.config.limit && pages.length >= this.config.limit) {
+          logger.info('Reached page limit, stopping fetch', { 
+            limit: this.config.limit, 
+            fetchedPages: pages.length 
+          });
+          break;
+        }
       }
 
       this.progress.totalPages = pages.length;
-      logger.info('Pages fetched', { count: pages.length });
+      logger.info('All pages fetched successfully', { count: pages.length });
       
       return pages;
     } catch (error) {
+      logger.error('Error in fetchPages', { error: error.message, stack: error.stack });
       this.addError('page', 'pages', 'Failed to fetch pages', true);
       throw new Error(`Failed to fetch pages: ${error instanceof Error ? error.message : String(error)}`);
     }
@@ -245,9 +281,17 @@ export class ExportRunner {
   private async transformPages(pages: Page[]): Promise<Map<string, MarkdownTransformResult>> {
     const results = new Map<string, MarkdownTransformResult>();
     
+    logger.info('Starting page transformation', { totalPages: pages.length });
+    
     const transformTasks = pages.map(page => 
       this.limit(async () => {
         try {
+          logger.info('Transforming page to markdown', { 
+            pageId: page.id, 
+            title: page.title,
+            bodyLength: page.bodyStorage?.length || 0
+          });
+          
           const result = this.transformer.transform(page, {
             currentPageId: page.id,
             spaceKey: this.config.spaceKey,
@@ -257,9 +301,10 @@ export class ExportRunner {
           results.set(page.id, result);
           this.progress.processedPages++;
           
-          logger.debug('Page transformed', {
+          logger.info('Page transformed successfully', {
             pageId: page.id,
             title: page.title,
+            markdownLength: result.content.length,
             links: result.links.length,
             attachments: result.attachments.length
           });
@@ -289,6 +334,11 @@ export class ExportRunner {
     transformResults: Map<string, MarkdownTransformResult>,
     attachments: Attachment[]
   ): Promise<void> {
+    logger.info('Starting file writing', { 
+      markdownFiles: transformResults.size,
+      attachments: attachments.length 
+    });
+    
     // Write markdown files
     const writeMarkdownTasks = Array.from(transformResults.entries()).map(([pageId, result]) =>
       this.limit(async () => {
@@ -299,6 +349,13 @@ export class ExportRunner {
           const slug = slugify(result.frontMatter.title as string);
           const filePath = `${this.config.outputDir}/${slug}.md`;
           
+          logger.info('Writing markdown file', { 
+            pageId, 
+            title: result.frontMatter.title,
+            filePath,
+            contentLength: result.content.length
+          });
+          
           const frontMatterStr = Object.entries(result.frontMatter)
             .map(([key, value]) => `${key}: ${JSON.stringify(value)}`)
             .join('\n');
@@ -307,7 +364,12 @@ export class ExportRunner {
           
           await atomicWriteFile(filePath, content);
           
-          logger.debug('Markdown file written', { pageId, filePath });
+          logger.info('Markdown file saved successfully', { 
+            pageId, 
+            title: result.frontMatter.title,
+            filePath,
+            fileSize: content.length
+          });
           
         } catch (error) {
           this.addError('filesystem', pageId, 'Failed to write markdown file', true);

@@ -66,6 +66,7 @@ export interface ExportConfig {
   outputDir: string;
   dryRun: boolean;
   concurrency: number;
+  limit?: number;
   resume: boolean;
   fresh: boolean;
   rootPageId?: string;

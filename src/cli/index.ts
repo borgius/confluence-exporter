@@ -78,6 +78,7 @@ program
   .option('--out <directory>', 'Output directory (default: ./spaces/<space_key>)', undefined)
   .option('--dry-run', 'Show what would be exported without writing files', false)
   .option('--concurrency <number>', 'Number of concurrent API requests', '5')
+  .option('--limit <number>', 'Maximum number of pages to fetch (useful for testing)', undefined)
   .option('--resume', 'Resume interrupted export (requires previous export state)')
   .option('--fresh', 'Start fresh export (remove any previous state)')
   .option('--root <pageId>', 'Root page ID to limit export scope (optional)')

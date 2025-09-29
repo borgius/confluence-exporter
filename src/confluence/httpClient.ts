@@ -10,6 +10,19 @@ export interface HttpClientConfig {
   retry: RetryPolicyConfig;
 }
 
+function shouldUseProxy(hostname: string): boolean {
+  const noProxy = process.env.no_proxy || process.env.NO_PROXY || '';
+  if (!noProxy) return true;
+  
+  const noProxyList = noProxy.split(',').map(entry => entry.trim());
+  return !noProxyList.some(entry => {
+    if (entry === hostname) return true;
+    if (entry.startsWith('.') && hostname.endsWith(entry)) return true;
+    if (hostname.endsWith('.' + entry)) return true;
+    return false;
+  });
+}
+
 export class HttpClient {
   private client: AxiosInstance;
   private retryConfig: RetryPolicyConfig;
@@ -20,15 +33,31 @@ export class HttpClient {
     // Create basic auth header
     const auth = Buffer.from(`${config.username}:${config.password}`).toString('base64');
     
-    this.client = axios.create({
+    // Check if we should use proxy for this baseUrl
+    const hostname = new URL(config.baseUrl).hostname;
+    const useProxy = shouldUseProxy(hostname);
+    
+    const axiosConfig: AxiosRequestConfig = {
       baseURL: config.baseUrl,
       headers: {
         'Authorization': `Basic ${auth}`,
         'Accept': 'application/json',
-        'Content-Type': 'application/json'
+        'User-Agent': 'curl/7.68.0' // Use curl-like user agent
       },
       timeout: 30000
-    });
+    };
+    
+    // Only set proxy if we should use it and proxy env vars are set
+    if (useProxy && (process.env.HTTP_PROXY || process.env.HTTPS_PROXY)) {
+      // Let axios handle proxy automatically when env vars are set
+      logger.debug('Using proxy for requests to', { hostname });
+    } else {
+      logger.debug('Bypassing proxy for requests to', { hostname });
+      // Explicitly disable proxy
+      axiosConfig.proxy = false;
+    }
+    
+    this.client = axios.create(axiosConfig);
 
     // Response interceptor for logging
     this.client.interceptors.response.use(

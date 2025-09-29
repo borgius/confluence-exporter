@@ -16,6 +16,7 @@ export interface CliFlags {
   outDir?: string;
   dryRun?: boolean;
   concurrency?: number;
+  limit?: number;
   resume?: boolean;
   fresh?: boolean;
   rootPageId?: string;
@@ -52,6 +53,7 @@ export function buildConfig(env: RawEnv, flags: CliFlags): ExportConfig {
 
   const dryRun = !!flags.dryRun;
   const concurrency = flags.concurrency && flags.concurrency > 0 ? flags.concurrency : 8;
+  const limit = flags.limit && flags.limit > 0 ? flags.limit : undefined;
   const resume = !!flags.resume;
   const fresh = !!flags.fresh;
   if (resume && fresh) throw new Error('Cannot specify both --resume and --fresh');
@@ -65,6 +67,7 @@ export function buildConfig(env: RawEnv, flags: CliFlags): ExportConfig {
     outputDir: flags.outDir || 'spaces',
     dryRun,
     concurrency,
+    limit,
     resume,
     fresh,
     rootPageId: flags.rootPageId,

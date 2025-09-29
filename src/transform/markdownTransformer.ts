@@ -41,7 +41,7 @@ export class MarkdownTransformer {
     const markdownContent = this.transformStorageToMarkdown(content, context, links, attachments);
 
     // Build front matter
-    const frontMatter = this.buildFrontMatter(page);
+    const frontMatter = this.buildFrontMatter(page, context);
 
     return {
       content: markdownContent,
@@ -141,8 +141,8 @@ export class MarkdownTransformer {
       // Ordered lists
       .replace(/<ol[^>]*>(.*?)<\/ol>/gis, (_match, listContent) => {
         let counter = 1;
-        const items = listContent.replace(/<li[^>]*>(.*?)<\/li>/gis, () => {
-          return `${counter++}. $1\n`;
+        const items = listContent.replace(/<li[^>]*>(.*?)<\/li>/gis, (_itemMatch, itemContent) => {
+          return `${counter++}. ${itemContent}\n`;
         });
         return items + '\n';
       });
@@ -248,6 +248,14 @@ export class MarkdownTransformer {
 
   private cleanupHtml(content: string): string {
     return content
+      // Remove Confluence layout elements while preserving content
+      .replace(/<ac:layout[^>]*>(.*?)<\/ac:layout>/gis, '$1')
+      .replace(/<ac:layout-section[^>]*>(.*?)<\/ac:layout-section>/gis, '$1')
+      .replace(/<ac:layout-cell[^>]*>(.*?)<\/ac:layout-cell>/gis, '$1')
+      // Remove Confluence link elements while preserving content  
+      .replace(/<ac:link[^>]*>(.*?)<\/ac:link>/gis, '$1')
+      .replace(/<ri:page[^>]*\/>/g, '')
+      .replace(/<ri:space[^>]*\/>/g, '')
       // Remove common HTML tags while preserving content
       .replace(/<(?:div|span|section|article)[^>]*>(.*?)<\/(?:div|span|section|article)>/gis, '$1')
       // Remove empty tags
@@ -262,9 +270,10 @@ export class MarkdownTransformer {
     return href.includes(baseUrl) || href.startsWith('/') || href.startsWith('#');
   }
 
-  private buildFrontMatter(page: Page): Record<string, unknown> {
+  private buildFrontMatter(page: Page, context: TransformContext): Record<string, unknown> {
     const frontMatter: Record<string, unknown> = {
       id: page.id,
+      url: `${context.baseUrl}/spaces/${context.spaceKey}/pages/${page.id}/${encodeURIComponent(page.title)}`,
       title: page.title,
       type: page.type
     };

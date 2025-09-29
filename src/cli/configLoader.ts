@@ -15,6 +15,7 @@ export interface CLIOptions {
   out?: string;
   dryRun: boolean;
   concurrency: string;
+  limit?: string;
   resume?: boolean;
   fresh?: boolean;
   root?: string;
@@ -32,6 +33,14 @@ function parseCliOptions(options: CLIOptions): CliFlags {
     throw new Error('Concurrency must be a number between 1 and 20');
   }
 
+  let limit: number | undefined;
+  if (options.limit) {
+    limit = parseInt(options.limit, 10);
+    if (Number.isNaN(limit) || limit < 1) {
+      throw new Error('Limit must be a positive number');
+    }
+  }
+
   const outputDir = options.out 
     ? resolve(options.out)
     : resolve(process.cwd(), 'spaces', options.space.toLowerCase().replace(/[^a-z0-9]/g, '-'));
@@ -41,6 +50,7 @@ function parseCliOptions(options: CLIOptions): CliFlags {
     outDir: outputDir,
     dryRun: options.dryRun,
     concurrency,
+    limit,
     resume: options.resume,
     fresh: options.fresh,
     rootPageId: options.root,

@@ -1,0 +1,22 @@
+{
+  "id": "95956406",
+  "title": "Making a template",
+  "type": "page",
+  "version": 1,
+  "parentId": "95956405",
+  "ancestors": [
+    {
+      "id": "95956404",
+      "title": "FCS Fidelity Charitable"
+    },
+    {
+      "id": "115361447",
+      "title": "Agile and Resource Center"
+    },
+    {
+      "id": "95956405",
+      "title": "Getting started with Confluence"
+    }
+  ],
+  "bodyStorage": "<ac:layout>\n    <ac:layout-section ac:type=\"single\">\n        <ac:layout-cell>\n            <p>Give your authors a helping hand by using templates in your documentation space. You will need Space Administrator permissions to create templates.</p>\n            <p>To create a template:</p>\n            <ol>\n                <li>Go to &quot;Space Tools&quot; in the sidebar, select &quot;Content Tools&quot; and create a new template.</li>\n                <li>Click &quot;Page Layout&quot; and add sections and columns to your page.</li>\n                <li>Add headings and sub-headings as needed.</li>\n                <li>Choose &quot;Instructional Text&quot; from the &quot;Template&quot; menu and add text that is only visible in the editor.</li>\n                <li>Save your template.</li>\n            </ol>\n            <p>Your template will become available in the Create dialog for this space.</p>\n        </ac:layout-cell>\n    </ac:layout-section>\n    <ac:layout-section ac:type=\"two_left_sidebar\">\n        <ac:layout-cell>\n            <p><strong>Related pages</strong></p>\n            <p>\n                <ac:structured-macro ac:name=\"contentbylabel\">\n                    <ac:parameter ac:name=\"spaces\">PR000299</ac:parameter>\n                    <ac:parameter ac:name=\"showLabels\">false</ac:parameter>\n                    <ac:parameter ac:name=\"sort\">title</ac:parameter>\n                    <ac:parameter ac:name=\"labels\">documentation-space-sample</ac:parameter>\n                    <ac:parameter ac:name=\"showSpace\">false</ac:parameter>\n                    <ac:parameter ac:name=\"type\">page</ac:parameter>\n                </ac:structured-macro>\n            </p>\n        </ac:layout-cell>\n        <ac:layout-cell>\n            <ac:structured-macro ac:name=\"info\">\n                <ac:parameter ac:name=\"title\">Useful hint</ac:parameter>\n                <ac:rich-text-body>\n                    <p><em>Confluence Administrators can also make templates that are available across your whole Confluence instance.</em></p>\n                </ac:rich-text-body>\n            </ac:structured-macro>\n        </ac:layout-cell>\n    </ac:layout-section>\n</ac:layout>"
+}

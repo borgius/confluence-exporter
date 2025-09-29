@@ -20,6 +20,24 @@ export interface GetPageOptions {
   version?: number;
 }
 
+interface ConfluencePageResponse {
+  id: string;
+  title: string;
+  type: string;
+  version?: {
+    number: number;
+  };
+  ancestors?: Array<{
+    id: string;
+    title: string;
+  }>;
+  body?: {
+    storage?: {
+      value: string;
+    };
+  };
+}
+
 export interface ListPagesOptions {
   expand?: string[];
   start?: number;
@@ -45,11 +63,7 @@ export class ConfluenceApi {
    * Get space information by key
    */
   async getSpace(spaceKey: string): Promise<Space> {
-    const response = await this.http.get<Space>(`/rest/api/space/${spaceKey}`, {
-      params: {
-        expand: 'description.plain,homepage'
-      }
-    });
+    const response = await this.http.get<Space>(`/rest/api/space/${spaceKey}?expand=description.plain,homepage`);
     return response;
   }
 
@@ -67,8 +81,9 @@ export class ConfluenceApi {
       type = 'page'
     } = options;
 
-    return this.http.get<PaginatedResponse<Page>>(`/rest/api/space/${spaceKey}/content`, {
+    return this.http.get<PaginatedResponse<Page>>(`/rest/api/content`, {
       params: {
+        spaceKey,
         expand: expand.join(','),
         start,
         limit,
@@ -97,9 +112,26 @@ export class ConfluenceApi {
       params.version = version;
     }
 
-    return this.http.get<Page>(`/rest/api/content/${pageId}`, {
+    const response = await this.http.get<ConfluencePageResponse>(`/rest/api/content/${pageId}`, {
       params
     });
+
+    return this.transformPageResponse(response);
+  }
+
+  /**
+   * Transform Confluence API response to our Page interface
+   */
+  private transformPageResponse(response: ConfluencePageResponse): Page {
+    return {
+      id: response.id,
+      title: response.title,
+      type: response.type,
+      version: response.version?.number,
+      parentId: response.ancestors?.[response.ancestors.length - 1]?.id,
+      ancestors: response.ancestors?.map((a) => ({ id: a.id, title: a.title })),
+      bodyStorage: response.body?.storage?.value || ''
+    };
   }
 
   /**
@@ -169,6 +201,10 @@ export class ConfluenceApi {
         start,
         limit
       });
+
+      if (!response.results || !Array.isArray(response.results)) {
+        throw new Error('Invalid API response: results is not an array');
+      }
 
       for (const page of response.results) {
         yield page;
