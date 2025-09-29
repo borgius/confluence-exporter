@@ -1,6 +1,6 @@
 # Feature Specification: Confluence Space to Markdown Extraction Library
 
-**Feature Branch**: `001-i-like-to`  
+**Feature Branch**: `001-confluence-exporter`  
 **Created**: 2025-09-29  
 **Status**: Draft  
 **Input**: User description: "I like to build library that, fetch all pages from confluence space, and convert it to markdown format. Later I like to build RAG system using that files (just keep in mind). it should save it to spaces/<space_name> folder with the same folder structure as on confluence."
@@ -74,12 +74,26 @@ As a developer or knowledge engineer, I want to fetch all pages from a given Con
 - **FR-020**: System MUST produce output path stable across runs (idempotent naming) to facilitate downstream indexing.
  - **FR-021**: After a previously interrupted export is detected (presence of partial manifest / temp markers), the tool MUST require an explicit `--resume` or `--fresh` flag; default (no flag) MUST abort with clear guidance. `--resume` processes only missing/failed pages reusing valid artifacts; `--fresh` discards temp state and re-exports all pages.
 
+### Markdown Cleanup Requirements
+- **FR-022**: System MUST apply typographic improvements including smart quotes, apostrophes, ellipses, and proper dash usage to exported markdown files automatically as post-processing
+- **FR-023**: System MUST normalize heading formats to use consistent title case styling across all exported pages
+- **FR-024**: System MUST implement smart word wrapping that respects sentence boundaries and maintains readability with a target line length of 92 characters
+- **FR-025**: System MUST clean up export artifacts including unnecessary escapes, empty HTML comments, and malformed links from the markdown transformation process
+- **FR-026**: System MUST normalize boldface formatting to ensure consistent punctuation handling
+- **FR-027**: System MUST reposition footnotes to follow punctuation marks according to typographic conventions
+- **FR-028**: System MUST preserve code blocks, mathematical notation, frontmatter, and other special content without modification during cleanup
+- **FR-029**: System MUST provide different cleanup intensity levels (light/standard/heavy) with heavy cleanup as the default for automatic processing
+- **FR-030**: System MUST maintain document structure and semantic meaning while improving presentation quality
+- **FR-031**: System MUST implement partial cleanup strategy where individual cleanup rules can fail independently without affecting successful rule application
+- **FR-032**: System MUST allow users to disable cleanup entirely via CLI flag for debugging or compatibility purposes
+
 ### Non-Functional / Quality Constraints
 - **NFR-001**: Export of a medium space (300-700 pages, light attachments) SHOULD complete within a target baseline (e.g., <10 minutes with standard network). [NEEDS CLARIFICATION: performance target]
 - **NFR-002**: Memory usage SHOULD remain bounded at <300MB RSS (streaming preferred over full in-memory graph). [NEEDS CLARIFICATION: memory ceiling]
 - **NFR-003**: All filesystem writes MUST be atomic (write temp then move) to prevent partial file corruption.
 - **NFR-004**: Logs MUST be structured enough to enable parsing for metrics (JSON or key=value lines). [NEEDS CLARIFICATION: logging format]
 - **NFR-005**: Tool MUST be usable in CI environments (non-interactive). Authentication MUST use HTTP Basic Auth with a Confluence username and password provided via environment variables (e.g., `CONFLUENCE_USERNAME`, `CONFLUENCE_PASSWORD`) or CLI flags; credentials MUST be encoded as `Authorization: Basic <base64(username:password)>` without interactive prompts when running headless.
+- **NFR-006**: Markdown cleanup processing MUST complete within 1 second per individual markdown file to support interactive workflows and maintain overall export performance
 
 ### Key Entities
 - **Space**: Logical grouping of pages; attributes: key, name, base URL.
@@ -88,6 +102,9 @@ As a developer or knowledge engineer, I want to fetch all pages from a given Con
 - **ExportJob**: Run-level metadata (start time, end time, pages total, pages succeeded, pages failed, mode=full|incremental, flags).
 - **ManifestEntry**: Mapping of page id → local relative path, hash, last exported timestamp.
 - **LinkReference**: Internal cross-link needing rewrite to local Markdown path.
+- **CleanupRule**: Individual markdown formatting transformation rule with priority, configuration, and content type restrictions.
+- **CleanupResult**: Outcome of applying cleanup rules including success status, changes applied, and processing metrics.
+- **MarkdownCleanupConfig**: Configuration for cleanup intensity, line length targets, and rule enablement settings.
 
 ---
 
@@ -130,3 +147,8 @@ As a developer or knowledge engineer, I want to fetch all pages from a given Con
 - Q: What retry/backoff policy should apply when the Confluence API returns rate limit or transient errors? → A: Option B with Retry-After (exponential jittered backoff, 6 attempts, honor Retry-After)
  - Q: When an export is interrupted how should restart behavior work by default? → A: Option D with mandatory explicit flag if interrupted (require `--resume` or `--fresh` on next run; no implicit default)
  - Q: Which authentication mechanism should the CLI implement for Confluence access? → A: Basic Auth (username + password; no token/email) via `Authorization: Basic` header, non-interactive friendly.
+- Q: How should the markdown cleanup be integrated into the existing transformation workflow? → A: Automatic post-processing: Always runs after each transformation without user intervention
+- Q: What should be the target line length for smart word wrapping? → A: 92 characters: Flowmark's default compromise between readability and modern displays
+- Q: How should the system handle cleanup failures or corrupted markdown files? → A: Partial cleanup: Apply only successful cleanup rules, skip problematic ones
+- Q: What should be the default cleanup intensity level for automatic processing? → A: Heavy: All cleanup rules including aggressive export artifact removal
+- Q: What should be the acceptable processing time for cleanup per markdown file? → A: Under 1 second: Fast enough for interactive workflows

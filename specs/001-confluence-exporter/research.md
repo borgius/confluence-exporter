@@ -2,7 +2,7 @@
 
 Date: 2025-09-29  
 Feature: Confluence Space to Markdown Extraction Library  
-Spec: `specs/001-i-like-to/spec.md`
+Spec: `specs/001-confluence-exporter/spec.md`
 
 ## Decision Log
 

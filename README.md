@@ -450,11 +450,11 @@ console.log(`Exported ${result.processedPages} pages`);
 
 ## Documentation Artifacts
 
-- Specification: `specs/001-i-like-to/spec.md`
-- Implementation Plan: `specs/001-i-like-to/plan.md`
-- Task Breakdown: `specs/001-i-like-to/tasks.md`
-- Data Model: `specs/001-i-like-to/data-model.md`
-- API Contracts: `specs/001-i-like-to/contracts/confluence-api.md`
+- Specification: `specs/001-confluence-exporter/spec.md`
+- Implementation Plan: `specs/001-confluence-exporter/plan.md`
+- Task Breakdown: `specs/001-confluence-exporter/tasks.md`
+- Data Model: `specs/001-confluence-exporter/data-model.md`
+- API Contracts: `specs/001-confluence-exporter/contracts/confluence-api.md`
 
 ## License
 
