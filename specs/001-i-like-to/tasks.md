@@ -84,21 +84,22 @@
 ### Services / Orchestration
 - [x] T051 Implement incremental diff service (src/services/incrementalDiff.ts) (compare old/new manifest entries + hashes).
 - [x] T052 Implement export orchestration pipeline (src/core/exportRunner.ts) (fetch, transform, write, manifest update, link rewrite final pass).
-- [x] T053 Integrate performance instrumentation (pages/sec, timings) (src/core/metrics.ts or inline instrumentation).
+- [x] T053 Integrate performance instrumentation (pages/sec, timings, memory usage <300MB per NFR-002) (src/core/metrics.ts or inline instrumentation).
 - [x] T054 Implement exit status evaluation (threshold checks) (src/core/exitStatus.ts).
+- [x] T054a Implement Markdown file validation (src/core/markdownValidator.ts) (validate front matter completeness, file extensions, basic structure per FR-015).
 
 ### CLI
-- [ ] T055 Implement CLI command & options (src/cli/index.ts) using commander (flags: --space, --out, --dry-run, --concurrency, --resume, --fresh, --root, --log-level).
-- [ ] T056 Wire config/env resolution & validation in CLI (src/cli/configLoader.ts) (produces ExportConfig).
-- [ ] T057 Implement progress logging (pages processed/remaining, warnings) (src/cli/progress.ts).
-- [ ] T058 Implement graceful interrupt handler (SIGINT) writing sentinel (src/cli/interrupt.ts).
-- [ ] T059 Build script & bin entrypoint header (dist/cli/index.js) (update package.json bin field).
+- [x] T055 Implement CLI command & options (src/cli/index.ts) using commander (flags: --space, --out, --dry-run, --concurrency, --resume, --fresh, --root, --log-level).
+- [x] T056 Wire config/env resolution & validation in CLI (src/cli/configLoader.ts) (produces ExportConfig).
+- [x] T057 Implement progress logging (pages processed/remaining, warnings) (src/cli/progress.ts).
+- [x] T058 Implement graceful interrupt handler (SIGINT) writing sentinel (src/cli/interrupt.ts).
+- [x] T059 Build script & bin entrypoint header (dist/cli/index.js) (update package.json bin field).
 
 ## Phase 3.4: Integration & Hardening
-- [ ] T060 Implement attachment failure threshold enforcement (src/core/thresholds.ts) (percent & absolute logic).
-- [ ] T061 Implement restricted page handling (skip & warn) (src/services/restrictedHandling.ts).
-- [ ] T062 Implement root page filter logic (src/services/rootFilter.ts).
-- [ ] T063 Implement resume mode guard (require --resume / --fresh if sentinel present) (src/core/resumeGuard.ts).
+- [x] T060 Implement attachment failure threshold enforcement (src/core/thresholds.ts) (percent & absolute logic).
+- [x] T061 Implement restricted page handling (skip & warn) (src/services/restrictedHandling.ts).
+- [x] T062 Implement root page filter logic (src/services/rootFilter.ts).
+- [x] T063 Implement resume mode guard (require --resume / --fresh if sentinel present) (src/core/resumeGuard.ts).
 - [ ] T064 Implement final link rewrite pass after all pages exported (src/core/finalizeLinks.ts).
 - [ ] T065 Implement dry-run planner output (src/core/dryRunPlanner.ts) (no writes, logs plan).
 - [ ] T066 Implement performance summary output block (src/core/perfSummary.ts).
@@ -112,9 +113,9 @@
 - [ ] T072 [P] Add performance test harness script (tests/integration/perf_harness.test.ts) (may be skipped by default).
 - [ ] T073 [P] Update README with usage examples & performance notes.
 - [ ] T074 [P] Update quickstart with resume/dry-run clarifications as implemented (if changes occurred).
-- [ ] T075 Refactor & de-duplicate transformation utilities (src/transform/cleanup.ts or adjust existing files).
+- [ ] T075 Refactor & de-duplicate transformation utilities (consolidate similar functions in src/transform/, remove unused exports, optimize attachment path resolution per code review findings).
 - [ ] T076 Run lint & fix remaining style issues.
-- [ ] T077 Ensure TypeScript strict mode passes (enable `strict` in tsconfig if not yet).
+- [ ] T077 Ensure TypeScript strict mode passes (enable `strict` in tsconfig if not yet) and verify ≥90% line coverage per constitution.
 - [ ] T078 Final pass: remove TODO markers not deferred intentionally.
 
 ## Dependencies Overview

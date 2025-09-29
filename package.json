@@ -5,6 +5,9 @@
   "type": "module",
   "description": "CLI + library to export a Confluence space to markdown with preserved structure.",
   "license": "MIT",
+  "bin": {
+    "confluence-exporter": "./dist/cli/index.js"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "clean": "rimraf dist",

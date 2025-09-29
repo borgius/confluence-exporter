@@ -75,8 +75,8 @@ As a developer or knowledge engineer, I want to fetch all pages from a given Con
  - **FR-021**: After a previously interrupted export is detected (presence of partial manifest / temp markers), the tool MUST require an explicit `--resume` or `--fresh` flag; default (no flag) MUST abort with clear guidance. `--resume` processes only missing/failed pages reusing valid artifacts; `--fresh` discards temp state and re-exports all pages.
 
 ### Non-Functional / Quality Constraints
-- **NFR-001**: Export of a medium space (≈500 pages, light attachments) SHOULD complete within a target baseline (e.g., <10 minutes with standard network). [NEEDS CLARIFICATION: performance target]
-- **NFR-002**: Memory usage SHOULD remain bounded (streaming preferred over full in-memory graph). [NEEDS CLARIFICATION: memory ceiling]
+- **NFR-001**: Export of a medium space (300-700 pages, light attachments) SHOULD complete within a target baseline (e.g., <10 minutes with standard network). [NEEDS CLARIFICATION: performance target]
+- **NFR-002**: Memory usage SHOULD remain bounded at <300MB RSS (streaming preferred over full in-memory graph). [NEEDS CLARIFICATION: memory ceiling]
 - **NFR-003**: All filesystem writes MUST be atomic (write temp then move) to prevent partial file corruption.
 - **NFR-004**: Logs MUST be structured enough to enable parsing for metrics (JSON or key=value lines). [NEEDS CLARIFICATION: logging format]
 - **NFR-005**: Tool MUST be usable in CI environments (non-interactive). Authentication MUST use HTTP Basic Auth with a Confluence username and password provided via environment variables (e.g., `CONFLUENCE_USERNAME`, `CONFLUENCE_PASSWORD`) or CLI flags; credentials MUST be encoded as `Authorization: Basic <base64(username:password)>` without interactive prompts when running headless.
