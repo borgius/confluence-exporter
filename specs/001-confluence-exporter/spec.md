@@ -38,6 +38,7 @@ As a developer or knowledge engineer, I want to fetch all pages from a given Con
 4. **Given** a page is updated in Confluence after an initial export, **When** I rerun incremental export, **Then** only changed/new pages are re-downloaded, deleted pages are removed locally, and a log/manifest delta lists added/updated/removed counts.
 5. **Given** an export is interrupted (network failure or user cancellation), **When** I restart the process without specifying a mode, **Then** the tool MUST refuse to proceed and instruct me to choose either `--resume` or `--fresh` explicitly; `--resume` reuses prior manifest/temp state to process only incomplete pages, while `--fresh` performs a clean restart deleting partial temp artifacts.
 6. **Given** a space has attachments (images), **When** the export succeeds, **Then** all attachments are downloaded and referenced with relative paths in Markdown consistent across the space.
+7. **Given** pages contain macros that reference other pages (e.g., list-children macro, user mentions), **When** the export processes these pages, **Then** all referenced pages are automatically discovered, added to the download queue, and exported even if they were not initially part of the space traversal, with the queue state persisted to disk after each modification.
 
 ### Edge Cases
 - Space contains extremely deep hierarchy (>7 levels). Handling depth without path length or recursion failure.
@@ -48,6 +49,8 @@ As a developer or knowledge engineer, I want to fetch all pages from a given Con
 - Non-ASCII characters in titles → filesystem-safe slug collisions (two pages with same sanitized name) resolved by appending short stable page ID fragment.
 - Attachment filename collisions.
 - Rate limiting / API throttling from Confluence handled with exponential backoff + jitter respecting Retry-After header.
+- Download queue grows exponentially due to deeply interconnected page references: implement queue size limits and circular reference detection.
+- Queue persistence corruption during write operations: system must recover gracefully and rebuild queue from manifest state using corruption detection (T137) and recovery mechanisms (T085) that validate checksums and restore from last known good state.
 
 ## Requirements *(mandatory)*
 
@@ -57,7 +60,7 @@ As a developer or knowledge engineer, I want to fetch all pages from a given Con
 - **FR-003**: System MUST convert Confluence storage/representation format to CommonMark-compatible Markdown (headings, paragraphs, bold/italic, code, tables, lists, block quotes, panels/admonitions where feasible).
 - **FR-004**: System MUST map internal page links to relative links between exported Markdown files.
 - **FR-005**: System MUST export page metadata (title, original URL, last modified timestamp, page ID) as a front matter block or header section.
-- **FR-006**: System MUST download ALL attachments (images and other binary assets) into a deterministic `assets/` subtree (e.g., `assets/<page-slug>/` or shared hashed path) and rewrite page references to relative local paths; failure to download an attachment counts as a page warning but does not fail the whole run unless >X% attachments fail (threshold to define in planning).
+- **FR-006**: System MUST download ALL attachments (images and other binary assets) into a deterministic `assets/` subtree (e.g., `assets/<page-slug>/` or shared hashed path) and rewrite page references to relative local paths; failure to download an attachment counts as a page warning but does not fail the whole run unless attachment failures exceed 20% of total attachments OR more than 25 individual failures (whichever threshold is reached first).
 - **FR-007**: System MUST produce a manifest file (e.g., `spaces/<space_key>/manifest.json` or `.yml`) enumerating all exported pages with their source IDs and file paths.
 - **FR-008**: System MUST provide deterministic file naming (documented slugification). On slug collision, append short stable page ID fragment: `slug--<pageIdSuffix>.md` (chosen Option A) ensuring uniqueness without reorder.
 - **FR-009**: System MUST log progress (at minimum: pages processed, pages remaining, warnings, failures).
@@ -86,6 +89,16 @@ As a developer or knowledge engineer, I want to fetch all pages from a given Con
 - **FR-031**: System MUST implement partial cleanup strategy where individual cleanup rules can fail independently without affecting successful rule application
 - **FR-032**: System MUST allow users to disable cleanup entirely via CLI flag for debugging or compatibility purposes
 
+### Global Download Queue Requirements
+- **FR-033**: System MUST implement a global download queue that tracks all pages requiring processing, including initial space pages, dynamically discovered pages from macros (e.g., list-children), user references, and any other page dependencies encountered during transformation.
+- **FR-034**: System MUST persist the download queue to disk after each modification (add/remove operations) to enable recovery from interruptions and maintain queue state across resume operations.
+- **FR-035**: System MUST automatically add discovered page references to the download queue when encountered during content transformation, including but not limited to: user mentions, list-children macro references, inline page links, and embedded page content.
+- **FR-036**: System MUST process the download queue in a breadth-first manner, ensuring that all referenced pages are eventually downloaded and processed, potentially discovering additional pages that extend the queue.
+- **FR-037**: System MUST prevent infinite loops by tracking already-processed page IDs and skipping duplicate queue entries, while allowing re-queuing of pages that failed to download on previous attempts.
+- **FR-038**: System MUST store queue state in a structured format (JSON or similar) alongside the export manifest, including page IDs, queue timestamps, retry counts, and processing status for each queued item.
+- **FR-039**: System MUST handle queue persistence failures gracefully by continuing processing while logging warnings, ensuring that export progress is not blocked by temporary I/O issues.
+- **FR-040**: System MUST provide queue statistics in progress reporting, including total queued pages, processed pages, failed pages, and newly discovered pages during the current export run.
+
 ### Non-Functional / Quality Constraints
 - **NFR-001**: Export of a medium space (300-700 pages, light attachments) MUST complete within 10 minutes with standard network conditions (baseline target for performance validation).
 - **NFR-002**: Memory usage MUST remain below 300MB RSS during export processing (streaming preferred over full in-memory graph).
@@ -103,7 +116,11 @@ As a developer or knowledge engineer, I want to fetch all pages from a given Con
 - **LinkReference**: Internal cross-link needing rewrite to local Markdown path.
 - **CleanupRule**: Individual markdown formatting transformation rule with priority, configuration, and content type restrictions.
 - **CleanupResult**: Outcome of applying cleanup rules including success status, changes applied, and processing metrics.
+- **CleanupStats**: Aggregate cleanup statistics including documents processed, processing time, rules applied, and error counts.
 - **MarkdownCleanupConfig**: Configuration for cleanup intensity, line length targets, and rule enablement settings.
+- **DownloadQueue**: Global queue managing pages requiring processing; attributes: queue items, persistence state, statistics.
+- **QueueItem**: Individual queue entry with: page id, source type (initial|macro|reference), discovery timestamp, retry count, processing status, parent page id (optional).
+- **QueuePersistence**: Disk-based queue state management with: file path, serialization format, atomic write operations, recovery mechanisms.
 
 ---
 

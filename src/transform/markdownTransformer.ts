@@ -6,6 +6,15 @@ export interface MarkdownTransformResult {
   links: LinkExtraction[];
   attachments: AttachmentReference[];
   users: UserReference[];
+  macroExpansions: MacroExpansionRequest[];
+  discoveredPageIds: string[]; // Page IDs discovered during macro expansion that need to be downloaded
+}
+
+export interface MacroExpansionRequest {
+  type: 'list-children' | 'contentbylabel' | 'excerpt-include';
+  pageId: string; // The page where the macro appears
+  parameters: Record<string, string>;
+  placeholder: string; // The placeholder text to replace
 }
 
 export interface LinkExtraction {
@@ -45,9 +54,10 @@ export class MarkdownTransformer {
     const links: LinkExtraction[] = [];
     const attachments: AttachmentReference[] = [];
     const users: UserReference[] = [];
+    const macroExpansions: MacroExpansionRequest[] = [];
 
     // Transform the content and extract references
-    const markdownContent = this.transformStorageToMarkdown(content, context, links, attachments, users);
+    const markdownContent = this.transformStorageToMarkdown(content, context, links, attachments, users, macroExpansions);
 
     // Build front matter
     const frontMatter = this.buildFrontMatter(page, context);
@@ -57,7 +67,9 @@ export class MarkdownTransformer {
       frontMatter,
       links,
       attachments,
-      users
+      users,
+      macroExpansions,
+      discoveredPageIds: [] // Basic transformer doesn't discover pages, only enhanced transformer does
     };
   }
 
@@ -66,7 +78,8 @@ export class MarkdownTransformer {
     context: TransformContext,
     links: LinkExtraction[],
     attachments: AttachmentReference[],
-    users: UserReference[]
+    users: UserReference[],
+    macroExpansions: MacroExpansionRequest[]
   ): string {
     let result = content;
 
@@ -95,7 +108,7 @@ export class MarkdownTransformer {
     result = this.transformAttachments(result, context, attachments);
     
     // Transform macros to appropriate markdown or placeholders
-    result = this.transformMacros(result);
+    result = this.transformMacros(result, context, macroExpansions);
     
     // Clean up remaining HTML tags
     result = this.cleanupHtml(result);
@@ -281,7 +294,11 @@ export class MarkdownTransformer {
     });
   }
 
-  private transformMacros(content: string): string {
+  private transformMacros(
+    content: string, 
+    context: TransformContext, 
+    macroExpansions: MacroExpansionRequest[]
+  ): string {
     return content
       // Info macro
       .replace(/<ac:structured-macro[^>]*ac:name="info"[^>]*>.*?<ac:rich-text-body>(.*?)<\/ac:rich-text-body>.*?<\/ac:structured-macro>/gis, '> **Info:** $1\n\n')
@@ -289,10 +306,92 @@ export class MarkdownTransformer {
       .replace(/<ac:structured-macro[^>]*ac:name="warning"[^>]*>.*?<ac:rich-text-body>(.*?)<\/ac:rich-text-body>.*?<\/ac:structured-macro>/gis, '> **Warning:** $1\n\n')
       // Note macro
       .replace(/<ac:structured-macro[^>]*ac:name="note"[^>]*>.*?<ac:rich-text-body>(.*?)<\/ac:rich-text-body>.*?<\/ac:structured-macro>/gis, '> **Note:** $1\n\n')
+      // List-children macro - shows child pages (handles both self-closing and regular)
+      .replace(/<ac:structured-macro[^>]*ac:name="list-children"[^>]*(?:\/>|>.*?<\/ac:structured-macro>)/gis, (match) => {
+        const params = this.extractMacroParameters(match);
+        const placeholder = `<!-- MACRO_EXPANSION:list-children:${Date.now()}:${Math.random().toString(36)} -->`;
+        
+        // Add to expansion requests for later processing
+        macroExpansions.push({
+          type: 'list-children',
+          pageId: context.currentPageId,
+          parameters: params,
+          placeholder
+        });
+        
+        return placeholder + '\n\n';
+      })
+      // Content by label macro - shows pages with specific labels
+      .replace(/<ac:structured-macro[^>]*ac:name="contentbylabel"[^>]*(?:\/>|>(.*?)<\/ac:structured-macro>)/gis, (match) => {
+        const params = this.extractMacroParameters(match);
+        const placeholder = `<!-- MACRO_EXPANSION:contentbylabel:${Date.now()}:${Math.random().toString(36)} -->`;
+        
+        macroExpansions.push({
+          type: 'contentbylabel',
+          pageId: context.currentPageId,
+          parameters: params,
+          placeholder
+        });
+        
+        return placeholder + '\n\n';
+      })
+      // Code macro with language and title support
+      .replace(/<ac:structured-macro[^>]*ac:name="code"[^>]*>(.*?)<\/ac:structured-macro>/gis, (match, body) => {
+        const params = this.extractMacroParameters(match);
+        const language = params.language || '';
+        const title = params.title;
+        
+        // Extract only the plain text body content
+        const plainTextMatch = body.match(/<ac:plain-text-body[^>]*>(.*?)<\/ac:plain-text-body>/is);
+        const codeContent = plainTextMatch ? plainTextMatch[1].trim() : body.replace(/<[^>]*>/g, '').trim();
+        
+        let result = '';
+        if (title) {
+          result += `**${title}**\n\n`;
+        }
+        result += '```' + language + '\n' + codeContent + '\n```\n\n';
+        return result;
+      })
+      // Excerpt macro - content for reuse
+      .replace(/<ac:structured-macro[^>]*ac:name="excerpt"[^>]*>.*?<ac:rich-text-body>(.*?)<\/ac:rich-text-body>.*?<\/ac:structured-macro>/gis, '$1\n\n')
+      // Excerpt-include macro - includes content from another page (handles both self-closing and regular)
+      .replace(/<ac:structured-macro[^>]*ac:name="excerpt-include"[^>]*(?:\/>|>(.*?)<\/ac:structured-macro>)/gis, (match) => {
+        const params = this.extractMacroParameters(match);
+        const placeholder = `<!-- MACRO_EXPANSION:excerpt-include:${Date.now()}:${Math.random().toString(36)} -->`;
+        
+        macroExpansions.push({
+          type: 'excerpt-include',
+          pageId: context.currentPageId,
+          parameters: params,
+          placeholder
+        });
+        
+        return placeholder + '\n\n';
+      })
       // Table of contents
       .replace(/<ac:structured-macro[^>]*ac:name="toc"[^>]*>.*?<\/ac:structured-macro>/gis, '<!-- Table of Contents -->\n\n')
-      // Other macros - convert to comments
-      .replace(/<ac:structured-macro[^>]*ac:name="([^"]*)"[^>]*>.*?<\/ac:structured-macro>/gis, '<!-- Confluence Macro: $1 -->\n\n');
+      // Other macros - convert to comments (handles both self-closing and regular)
+      .replace(/<ac:structured-macro[^>]*ac:name="([^"]*)"[^>]*(?:\/>|>.*?<\/ac:structured-macro>)/gis, '<!-- Confluence Macro: $1 -->\n\n');
+  }
+
+  /**
+   * Extract parameters from a structured macro
+   */
+  private extractMacroParameters(macroContent: string): Record<string, string> {
+    const params: Record<string, string> = {};
+    
+    // Extract parameters from ac:parameter elements
+    const paramRegex = /<ac:parameter[^>]*ac:name="([^"]*)"[^>]*>(.*?)<\/ac:parameter>/gis;
+    let match: RegExpExecArray | null = paramRegex.exec(macroContent);
+    
+    while (match !== null) {
+      const paramName = match[1];
+      const paramValue = match[2].replace(/<[^>]*>/g, '').trim(); // Strip HTML tags
+      params[paramName] = paramValue;
+      match = paramRegex.exec(macroContent);
+    }
+    
+    return params;
   }
 
   private cleanupHtml(content: string): string {

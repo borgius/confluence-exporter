@@ -73,6 +73,53 @@ Logical entities supporting export of a Confluence space to local Markdown with 
 | originalHref | string | yes | Original link value |
 | rewrittenHref | string | no | Local relative link after rewrite |
 
+## Queue Management Entities
+
+### QueueItem
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| pageId | string | yes | Confluence page ID to process |
+| sourceType | "initial"\|"macro"\|"reference"\|"user" | yes | How page was discovered |
+| discoveryTimestamp | number | yes | Unix timestamp when added to queue |
+| retryCount | number | yes | Number of processing attempts (starts at 0) |
+| parentPageId | string | no | Page that referenced this item (for tracing) |
+| status | "pending"\|"processing"\|"completed"\|"failed" | yes | Current processing status |
+
+### DownloadQueue
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| items | Map<string, QueueItem> | yes | Queue items indexed by page ID |
+| processingOrder | string[] | yes | FIFO processing order (page IDs) |
+| processedPages | Set<string> | yes | Completed page IDs (prevents duplicates) |
+| metrics | QueueMetrics | yes | Performance and status metrics |
+| persistencePath | string | yes | Disk persistence file path |
+| maxQueueSize | number | yes | Soft limit for queue growth protection |
+| persistenceThreshold | number | yes | Number of operations before forced save |
+
+### QueueMetrics
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| totalQueued | number | yes | Total items ever added to queue |
+| totalProcessed | number | yes | Total items successfully processed |
+| totalFailed | number | yes | Total items that failed processing |
+| currentQueueSize | number | yes | Items currently pending processing |
+| discoveryRate | number | yes | Pages discovered per second (recent average) |
+| processingRate | number | yes | Pages processed per second (recent average) |
+| averageRetryCount | number | yes | Average retries per failed item |
+| persistenceOperations | number | yes | Total queue persistence writes |
+| lastPersistenceTime | string (ISO) | no | Timestamp of last successful persistence |
+
+### QueuePersistence
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| version | number | yes | Queue state format version |
+| timestamp | string (ISO) | yes | State snapshot timestamp |
+| spaceKey | string | yes | Associated space key |
+| queueItems | QueueItem[] | yes | Serialized queue items |
+| processedPageIds | string[] | yes | Serialized processed pages set |
+| metrics | QueueMetrics | yes | Metrics at persistence time |
+| checksum | string | yes | Integrity verification hash |
+
 ## Cleanup Entities
 
 ### MarkdownDocument
@@ -206,6 +253,12 @@ Logical entities supporting export of a Confluence space to local Markdown with 
 - CleanupResult produced by applying CleanupRule[] to MarkdownDocument
 - CleanupConfig → CleanupRule configuration
 - ExportJob → CleanupStats aggregation
+- **Queue Relationships:**
+  - ExportJob 1:1 DownloadQueue (each job has associated queue)
+  - DownloadQueue 1→* QueueItem (queue contains multiple items)
+  - QueueItem N:1 Page (items reference pages to be processed)
+  - QueueItem optionally references another Page via parentPageId
+  - QueuePersistence 1:1 DownloadQueue (queue state serialization)
 
 ## State Transitions
 
@@ -227,6 +280,20 @@ PENDING → PROCESSING → (COMPLETED | FAILED | SKIPPED)
 - FAILED: Critical error prevents cleanup completion
 - SKIPPED: Document excluded from cleanup (e.g., configuration, content type)
 
+### QueueItem
+PENDING → PROCESSING → (COMPLETED | FAILED)
+- FAILED items can transition back to PENDING for retry (incrementing retryCount)
+- COMPLETED items are moved to processedPages set and removed from active queue
+- Maximum retryCount limits prevent infinite retry loops
+
+### DownloadQueue
+EMPTY → POPULATED → PROCESSING → (DRAINED | FAILED | INTERRUPTED)
+- POPULATED: Initial pages added from space discovery
+- PROCESSING: Items being processed with potential new discoveries
+- DRAINED: All queue items successfully processed
+- FAILED: Too many processing failures or queue corruption
+- INTERRUPTED: Export stopped mid-processing, queue state preserved for resume
+
 ## Validation Rules
 
 ### Export Validation
@@ -242,6 +309,16 @@ PENDING → PROCESSING → (COMPLETED | FAILED | SKIPPED)
 - Line length must be between 40-200 characters
 - Processing time must be non-negative
 - Locale must be valid BCP-47 language tag
+
+### Queue Validation
+- Page IDs must be non-empty strings and unique within queue
+- Source type must be one of valid enum values
+- Discovery timestamp must be positive Unix timestamp
+- Retry count must be non-negative integer ≤ maximum allowed retries
+- Queue size must not exceed configured maximum (soft/hard limits)
+- Processing order must maintain FIFO consistency with queue items
+- Processed pages set must not contain items still in active queue
+- Persistence checksum must verify queue state integrity
 
 ## Derived Data
 - `hash` derived from normalized markdown content (after cleanup if enabled)

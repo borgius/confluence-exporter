@@ -292,7 +292,7 @@ export class ExportRunner {
             bodyLength: page.bodyStorage?.length || 0
           });
           
-          const result = await this.transformer.transformWithUserResolution(page, {
+          const result = await this.transformer.transformWithEnhancements(page, {
             currentPageId: page.id,
             spaceKey: this.config.spaceKey,
             baseUrl: this.config.baseUrl,

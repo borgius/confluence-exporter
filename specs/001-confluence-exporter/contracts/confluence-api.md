@@ -72,6 +72,73 @@ interface IContentTransformer {
 }
 ```
 
+### Enhanced Content Transformer (with Queue Discovery)
+```ts
+interface IEnhancedContentTransformer {
+  transformWithEnhancements(page: Page, context: EnhancedTransformContext): Promise<TransformResult>;
+}
+
+interface EnhancedTransformContext {
+  api: ConfluenceApi;
+  baseUrl: string;
+  spaceKey: string;
+  currentPageId: string;
+}
+
+interface TransformResult {
+  content: string;
+  discoveredPageIds: string[];
+  discoveredUsers: string[];
+  warnings: string[];
+}
+```
+
+### Download Queue Interface
+```ts
+interface IDownloadQueue {
+  add(items: QueueItem[]): Promise<void>;
+  next(): Promise<QueueItem | null>;
+  markProcessed(pageId: string): Promise<void>;
+  markFailed(pageId: string, error: Error): Promise<void>;
+  getMetrics(): QueueMetrics;
+  persist(): Promise<void>;
+  restore(): Promise<void>;
+  isEmpty(): boolean;
+  size(): number;
+}
+
+interface QueueItem {
+  pageId: string;
+  sourceType: 'initial' | 'macro' | 'reference' | 'user';
+  discoveryTimestamp: number;
+  retryCount: number;
+  parentPageId?: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+}
+
+interface QueueMetrics {
+  totalQueued: number;
+  totalProcessed: number;
+  totalFailed: number;
+  currentQueueSize: number;
+  discoveryRate: number;
+  processingRate: number;
+  averageRetryCount: number;
+  persistenceOperations: number;
+}
+```
+
+### Queue Persistence Interface
+```ts
+interface IQueuePersistence {
+  save(queue: DownloadQueue): Promise<void>;
+  load(): Promise<DownloadQueue | null>;
+  exists(): Promise<boolean>;
+  clear(): Promise<void>;
+  validate(data: any): boolean;
+}
+```
+
 ### Export Orchestrator (High-Level)
 ```ts
 interface ExportOrchestrator {

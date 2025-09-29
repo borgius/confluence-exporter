@@ -81,10 +81,110 @@ Spec: `specs/001-confluence-exporter/spec.md`
 - Rationale: Standard ecosystem tooling, good developer familiarity.
 - Alternatives: Vitest (lighter) deferred until potential performance need.
 
+## Global Download Queue Decisions (2025-09-29 Update)
+
+### 16. Global Download Queue Architecture
+- **Decision**: Implement queue as in-memory Set for tracking with persistent JSON file for state recovery
+- **Rationale**: Balance between performance (O(1) lookup), memory efficiency, and resume capability
+- **Alternatives**: 
+  - SQLite database (rejected: overhead for simple queue operations)
+  - Plain array (rejected: O(n) duplicate checking)
+  - Redis (rejected: external dependency complexity)
+
+### 17. Queue Persistence Strategy
+- **Decision**: Atomic writes using temp file + rename pattern; save after every N operations (configurable, default 10) or time interval (30s)
+- **Rationale**: Balances crash recovery with I/O performance; atomic writes prevent corruption
+- **Alternatives**: 
+  - Save after every modification (rejected: performance impact)
+  - No persistence (rejected: violates resume requirement)
+  - Write-ahead logging (rejected: overcomplicated for single-process tool)
+
+### 18. Circular Reference Detection
+- **Decision**: Maintain processed pages set separate from queue; prevent re-queuing already processed pages
+- **Rationale**: Simple and effective; supports legitimate re-processing of failed pages
+- **Alternatives**: 
+  - Depth limiting (rejected: may miss valid deep references)
+  - Graph cycle detection (rejected: overcomplicated for this use case)
+  - Time-based deduplication (rejected: not deterministic)
+
+### 19. Queue Processing Order
+- **Decision**: FIFO queue with breadth-first discovery; process pages in order discovered
+- **Rationale**: Ensures systematic coverage; predictable for debugging; supports natural hierarchy processing
+- **Alternatives**: 
+  - Priority queue by hierarchy depth (rejected: complexity without clear benefit)
+  - Parallel processing pools (deferred: complicates error handling and state management)
+  - Random order (rejected: unpredictable for testing and debugging)
+
+### 20. Queue Item Metadata
+- **Decision**: Store minimal metadata: `{pageId, sourceType, discoveryTimestamp, retryCount, parentPageId?}`
+- **Rationale**: Supports debugging and metrics without bloating queue size
+- **Alternatives**: 
+  - Full page metadata (rejected: memory inefficient, creates coupling)
+  - ID-only (rejected: loses debugging context)
+  - Rich dependency graph (rejected: overcomplicated for MVP)
+
+### 21. Dependency Discovery Hooks
+- **Decision**: Implement discovery via transformer plugins; each transformer can emit discovered page IDs
+- **Rationale**: Extensible design; clean separation of content processing and queue management
+- **Alternatives**: 
+  - Hardcoded discovery patterns (rejected: not extensible)
+  - Post-processing discovery (rejected: requires re-parsing content)
+  - Regex-based discovery (rejected: fragile for complex content)
+
+### 22. Queue Integration with Existing System
+- **Decision**: Queue state stored separately from manifest; manifest tracks completed exports, queue tracks pending work
+- **Rationale**: Clear separation of concerns; manifest remains source of truth for exported state
+- **Alternatives**: 
+  - Combined manifest+queue (rejected: conflates different concerns)
+  - Queue as manifest extension (rejected: complicates existing logic)
+  - No manifest integration (rejected: loses export traceability)
+
 ## Open Items (Defer to Later Phase)
 - Exact attachment failure absolute threshold tuning after initial real-run metrics.
 - Advanced storage format features (macros, panels beyond admonitions) extension interface.
 - Title rename redirect mapping logic (Phase 2+ backlog).
+- Queue size monitoring and alerting thresholds fine-tuning.
+- Specific discovery patterns for different macro types.
+- Integration testing with actual Confluence spaces for queue behavior.
+
+## Queue Implementation Architecture
+
+### Queue Module Structure
+```
+src/queue/
+├── downloadQueue.ts     # Main queue implementation
+├── queuePersistence.ts  # Disk persistence operations
+├── queueItem.ts         # Queue item data model
+├── queueMetrics.ts      # Performance monitoring
+└── index.ts             # Public interface
+```
+
+### Key Interfaces
+```typescript
+interface QueueItem {
+  pageId: string;
+  sourceType: 'initial' | 'macro' | 'reference' | 'user';
+  discoveryTimestamp: number;
+  retryCount: number;
+  parentPageId?: string;
+}
+
+interface DownloadQueue {
+  add(items: QueueItem[]): Promise<void>;
+  next(): Promise<QueueItem | null>;
+  markProcessed(pageId: string): Promise<void>;
+  markFailed(pageId: string, error: Error): Promise<void>;
+  getMetrics(): QueueMetrics;
+  persist(): Promise<void>;
+  restore(): Promise<void>;
+}
+```
+
+### Integration Points
+1. **ExportRunner**: Initialize queue with initial space pages
+2. **EnhancedMarkdownTransformer**: Emit discovered page IDs during transformation
+3. **ResumePersistence**: Coordinate queue state with resume journal
+4. **ProgressReporter**: Include queue metrics in progress output
 
 ## Verification
 All previously flagged NEEDS CLARIFICATION items now have a decision or explicit deferral with rationale.

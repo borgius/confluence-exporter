@@ -149,6 +149,38 @@ export class ConfluenceApi {
   }
 
   /**
+   * Get child pages for a given page
+   */
+  async getChildPages(
+    pageId: string,
+    options: ListPagesOptions = {}
+  ): Promise<PaginatedResponse<Page>> {
+    const {
+      expand = ['version', 'ancestors'],
+      start = 0,
+      limit = 50,
+      type = 'page'
+    } = options;
+
+    const params: Record<string, unknown> = {
+      expand: expand.join(','),
+      start,
+      limit,
+      type
+    };
+
+    const response = await this.http.get<PaginatedResponse<ConfluencePageResponse>>(
+      `/rest/api/content/${pageId}/child/page`,
+      { params }
+    );
+
+    return {
+      ...response,
+      results: response.results.map(page => this.transformPageResponse(page))
+    };
+  }
+
+  /**
    * List attachments for a page
    */
   async listAttachments(

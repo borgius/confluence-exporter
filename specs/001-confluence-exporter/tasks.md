@@ -1,4 +1,4 @@
-# Tasks: Confluence Space to Markdown Extraction Library with Cleanup
+# Tasks: Confluence Space to Markdown Extraction Library with Markdown Cleanup and Global Download Queue
 
 **Input**: Design documents from `/specs/001-confluence-exporter/`
 **Prerequisites**: plan.md (required), research.md, data-model.md, contracts/
@@ -25,14 +25,14 @@
 - [x] T011 [P] Update ESLint config to include cleanup rule directories.
 
 ## Phase 3.2: Tests First (TDD)
-### Contract Tests (from contracts/confluence-api.md + cleanup-api.yaml)
+### Contract Tests (from contracts/confluence-api.md + contracts/download-queue.md)
 - [x] T012 [P] Contract test: GET space success (tests/contract/get_space.test.ts) using `nock` fixture.
 - [x] T013 [P] Contract test: GET paginated space content listing (tests/contract/list_pages_pagination.test.ts).
 - [x] T014 [P] Contract test: GET page with storage & ancestors (tests/contract/get_page_with_body.test.ts).
 - [x] T015 [P] Contract test: GET attachments pagination (tests/contract/get_attachments.test.ts).
 - [x] T016 [P] Contract test: Rate limit 429 + Retry-After honored (tests/contract/rate_limit_retry.test.ts).
 - [x] T017 [P] Contract test: Basic Auth header presence (tests/contract/basic_auth_header.test.ts).
-- [x] T018 [P] Contract test: cleanup API POST /cleanup in tests/contract/cleanup_api.test.ts.
+- [x] T018 [P] Contract test: markdown cleanup API POST /cleanup in tests/contract/cleanup_api.test.ts.
 
 ### Integration Tests (from user story + edge cases + quickstart + cleanup scenarios)
 - [x] T021 [P] Integration: Full export happy path (tests/integration/full_export_happy.test.ts) generates manifest & files.
@@ -54,173 +54,247 @@
 - [ ] T037 [P] Integration: Allow-failures flag validation (tests/integration/allow_failures_flag.test.ts).
 - [ ] T038 [P] Integration: Optional checksum generation (tests/integration/checksum_generation.test.ts).
 
+### Download Queue Integration Tests (NEW)
+- [ ] T039 [P] Integration: Basic queue discovery from list-children macro (tests/integration/queue_discovery_basic.test.ts).
+- [ ] T040 [P] Integration: Queue persistence and recovery after interruption (tests/integration/queue_persistence.test.ts).
+- [ ] T041 [P] Integration: Circular reference detection and prevention (tests/integration/queue_circular_references.test.ts).
+- [ ] T042 [P] Integration: Queue processing with retry logic (tests/integration/queue_retry_logic.test.ts).
+- [ ] T043 [P] Integration: Multiple discovery sources (macros, users, links) (tests/integration/queue_multiple_sources.test.ts).
+- [ ] T044 [P] Integration: Queue size limits and memory management (tests/integration/queue_size_limits.test.ts).
+- [ ] T045 [P] Integration: Queue state corruption recovery (tests/integration/queue_corruption_recovery.test.ts).
+- [ ] T046 [P] Integration: Resume export with queue state restoration (tests/integration/queue_resume_export.test.ts).
+
 ### Unit Test Skeletons (key utilities) – still before implementation to enforce TDD
-- [x] T037 [P] Unit: Slug generation rules (tests/unit/slugify.test.ts) covers normalization & collisions.
-- [x] T038 [P] Unit: Retry backoff schedule generation (tests/unit/backoff.test.ts).
-- [x] T039 [P] Unit: Hash computation stability (tests/unit/hash.test.ts).
-- [x] T040 [P] Unit: Markdown transformer basic constructs (tests/unit/transformer_basic.test.ts).
-- [x] T041 [P] Unit: Manifest diff logic (tests/unit/manifest_diff.test.ts).
-- [x] T042 [P] Unit: Attachment path rewriting (tests/unit/attachment_rewrite.test.ts).
-- [x] T043 [P] Unit: Link rewrite mapping resolution (tests/unit/link_rewrite_map.test.ts).
-- [x] T044 [P] Unit: Config validation (tests/unit/config_validation.test.ts).
-- [x] T045 [P] Unit: Typography cleanup rules (tests/unit/typography_rules.test.ts).
-- [ ] T046 [P] Unit: Heading normalization logic (tests/unit/heading_normalization.test.ts).
-- [ ] T047 [P] Unit: Word wrapping with preservation (tests/unit/word_wrap.test.ts).
-- [ ] T048 [P] Unit: Footnote positioning (tests/unit/footnote_positioning.test.ts).
-- [ ] T049 [P] Unit: Boldface punctuation cleanup (tests/unit/boldface_cleanup.test.ts).
-- [ ] T050 [P] Unit: Export artifact removal (tests/unit/artifact_removal.test.ts).
-- [ ] T051 [P] Unit: Cleanup service orchestration (tests/unit/cleanup_service.test.ts).
-- [ ] T052 [P] Unit: Allow-failures flag logic (tests/unit/allow_failures.test.ts).
-- [ ] T053 [P] Unit: Checksum generation utility (tests/unit/checksum.test.ts).
+- [x] T047 [P] Unit: Slug generation rules (tests/unit/slugify.test.ts) covers normalization & collisions.
+- [x] T048 [P] Unit: Retry backoff schedule generation (tests/unit/backoff.test.ts).
+- [x] T049 [P] Unit: Hash computation stability (tests/unit/hash.test.ts).
+- [x] T050 [P] Unit: Markdown transformer basic constructs (tests/unit/transformer_basic.test.ts).
+- [x] T051 [P] Unit: Manifest diff logic (tests/unit/manifest_diff.test.ts).
+- [x] T052 [P] Unit: Attachment path rewriting (tests/unit/attachment_rewrite.test.ts).
+- [x] T053 [P] Unit: Link rewrite mapping resolution (tests/unit/link_rewrite_map.test.ts).
+- [x] T054 [P] Unit: Config validation (tests/unit/config_validation.test.ts).
+- [x] T055 [P] Unit: Typography cleanup rules (tests/unit/typography_rules.test.ts).
+- [ ] T056 [P] Unit: Heading normalization logic (tests/unit/heading_normalization.test.ts).
+- [ ] T057 [P] Unit: Word wrapping with preservation (tests/unit/word_wrap.test.ts).
+- [ ] T058 [P] Unit: Footnote positioning (tests/unit/footnote_positioning.test.ts).
+- [ ] T059 [P] Unit: Boldface punctuation cleanup (tests/unit/boldface_cleanup.test.ts).
+- [ ] T060 [P] Unit: Export artifact removal (tests/unit/artifact_removal.test.ts).
+- [ ] T061 [P] Unit: Cleanup service orchestration (tests/unit/cleanup_service.test.ts).
+- [ ] T062 [P] Unit: Allow-failures flag logic (tests/unit/allow_failures.test.ts).
+- [ ] T063 [P] Unit: Checksum generation utility (tests/unit/checksum.test.ts).
+
+### Download Queue Unit Tests (NEW)
+- [ ] T064 [P] Unit: Queue item operations (add, remove, status) (tests/unit/queue_item_ops.test.ts).
+- [ ] T065 [P] Unit: Queue FIFO processing order (tests/unit/queue_fifo_order.test.ts).
+- [ ] T066 [P] Unit: Queue persistence serialization/deserialization (tests/unit/queue_persistence.test.ts).
+- [ ] T067 [P] Unit: Queue metrics calculation (tests/unit/queue_metrics.test.ts).
+- [ ] T068 [P] Unit: Discovery hook pattern matching (tests/unit/discovery_hooks.test.ts).
+- [ ] T069 [P] Unit: Queue size validation and limits (tests/unit/queue_size_validation.test.ts).
+- [ ] T070 [P] Unit: Queue checksum validation (tests/unit/queue_checksum.test.ts).
+- [ ] T071 [P] Unit: Circular reference detection logic (tests/unit/circular_reference_detection.test.ts).
 
 ## Phase 3.3: Core Implementation (after tests exist & fail)
 ### Models & Types
-- [x] T052 [P] Define TypeScript interfaces/types for export entities (src/models/entities.ts) (Space, Page, Attachment, ManifestEntry, ExportJob, LinkReference, ExportConfig, RetryPolicy).
-- [ ] T053 [P] Define cleanup entities (src/models/markdownCleanup.ts) (MarkdownDocument, CleanupRule, CleanupResult, CleanupConfig, DocumentMetadata, supporting types).
-- [ ] T054 [P] Define entities for allow-failures flag and checksum utilities (src/models/optionalFeatures.ts).
+- [x] T072 [P] Define TypeScript interfaces/types for export entities (src/models/entities.ts) (Space, Page, Attachment, ManifestEntry, ExportJob, LinkReference, ExportConfig, RetryPolicy).
+- [ ] T073 [P] Define cleanup entities (src/models/markdownCleanup.ts) (MarkdownDocument, CleanupRule, CleanupResult, CleanupConfig, DocumentMetadata, supporting types).
+- [ ] T074 [P] Define entities for allow-failures flag and checksum utilities (src/models/optionalFeatures.ts).
+- [ ] T075 [P] Define download queue entities (src/models/queueEntities.ts) (QueueItem, DownloadQueue, QueueMetrics, QueuePersistence, QueueState).
 
 ### Utilities & Low-level Helpers
-- [x] T054 [P] Implement slug generation utility (src/util/slugify.ts).
-- [x] T055 [P] Implement retry/backoff utility with jitter & Retry-After handling (src/util/retry.ts).
-- [x] T056 [P] Implement hash utility (src/util/hash.ts) SHA-256 truncate 12 hex.
-- [x] T057 [P] Implement logger wrapper producing line-delimited JSON (src/util/logger.ts).
-- [x] T058 [P] Implement config validation (src/util/config.ts) (env + CLI merge, Basic Auth encoding).
-- [ ] T059 [P] Implement unified/remark parser utilities (src/util/markdownParser.ts).
-- [ ] T060 [P] Implement checksum utility for optional content hashing (src/util/checksum.ts).
-- [ ] T061 [P] Implement allow-failures flag processing utility (src/util/failureHandling.ts).
+- [x] T076 [P] Implement slug generation utility (src/util/slugify.ts).
+- [x] T077 [P] Implement retry/backoff utility with jitter & Retry-After handling (src/util/retry.ts).
+- [x] T078 [P] Implement hash utility (src/util/hash.ts) SHA-256 truncate 12 hex.
+- [x] T079 [P] Implement logger wrapper producing line-delimited JSON (src/util/logger.ts).
+- [x] T080 [P] Implement config validation (src/util/config.ts) (env + CLI merge, Basic Auth encoding).
+- [ ] T081 [P] Implement unified/remark parser utilities (src/util/markdownParser.ts).
+- [ ] T082 [P] Implement checksum utility for optional content hashing (src/util/checksum.ts).
+- [ ] T083 [P] Implement allow-failures flag processing utility (src/util/failureHandling.ts).
+
+### Download Queue Core Implementation (NEW)
+- [ ] T084 [P] Implement queue item operations and validation (src/queue/queueItem.ts) (supports FR-033, FR-037).
+- [ ] T085 [P] Implement queue persistence with atomic operations (src/queue/queuePersistence.ts) (implements FR-034, FR-038, FR-039).
+- [ ] T086 [P] Implement queue metrics calculation and tracking (src/queue/queueMetrics.ts) (implements FR-040).
+- [ ] T087 Implement main download queue orchestrator (src/queue/downloadQueue.ts) (FIFO processing, deduplication) (implements FR-033, FR-036, FR-037).
+- [ ] T088 [P] Implement queue checksum validation utilities (src/queue/queueValidation.ts) (supports FR-038).
+- [ ] T089 [P] Implement discovery hook pattern matching (src/queue/discoveryHooks.ts) (implements FR-035).
+- [ ] T090 Implement queue index module (src/queue/index.ts) (public interface exports).
 
 ### Confluence Client
-- [x] T060 Create base HTTP client with axios + interceptors (src/confluence/httpClient.ts) (auth header injection, retry integration).
-- [x] T061 Implement getSpace (src/confluence/getSpace.ts) using client.
-- [x] T062 Implement listPages paginator (src/confluence/listPages.ts) breadth-first with pagination.
-- [x] T063 Implement getPageWithBody (src/confluence/getPageWithBody.ts) retrieving storage & ancestors.
-- [x] T064 Implement listAttachments paginator (src/confluence/listAttachments.ts).
-- [x] T065 Implement downloadAttachment (src/confluence/downloadAttachment.ts) streaming to temp file.
+- [x] T091 Create base HTTP client with axios + interceptors (src/confluence/httpClient.ts) (auth header injection, retry integration).
+- [x] T092 Implement getSpace (src/confluence/getSpace.ts) using client.
+- [x] T093 Implement listPages paginator (src/confluence/listPages.ts) breadth-first with pagination.
+- [x] T094 Implement getPageWithBody (src/confluence/getPageWithBody.ts) retrieving storage & ancestors.
+- [x] T095 Implement listAttachments paginator (src/confluence/listAttachments.ts).
+- [x] T096 Implement downloadAttachment (src/confluence/downloadAttachment.ts) streaming to temp file.
 
 ### Transformation & Processing
-- [x] T066 Implement content transformer interface + basic implementation (src/transform/markdownTransformer.ts).
-- [ ] T067 Enhanced markdown transformer with cleanup integration (src/transform/enhancedMarkdownTransformer.ts).
-- [x] T068 Implement link extraction & rewrite mapping builder (src/transform/linkRewriter.ts).
-- [x] T069 Implement attachment reference rewrite utility (src/transform/attachmentRewriter.ts).
+- [x] T097 Implement content transformer interface + basic implementation (src/transform/markdownTransformer.ts).
+- [ ] T098 Enhanced markdown transformer with cleanup integration and queue discovery (src/transform/enhancedMarkdownTransformer.ts) (implements FR-035).
+- [x] T099 Implement link extraction & rewrite mapping builder (src/transform/linkRewriter.ts).
+- [x] T100 Implement attachment reference rewrite utility (src/transform/attachmentRewriter.ts).
 
 ### Cleanup Rules Implementation
-- [ ] T070 [P] Typography cleanup rule (src/transform/cleanupRules/typography.ts) (smart quotes, dashes, ellipses).
-- [ ] T071 [P] Heading normalization rule (src/transform/cleanupRules/headings.ts).
-- [ ] T072 [P] Smart word wrapping rule (src/transform/cleanupRules/wordWrap.ts) (92-character target).
-- [ ] T073 [P] Footnote positioning rule (src/transform/cleanupRules/footnotes.ts).
-- [ ] T074 [P] Boldface punctuation rule (src/transform/cleanupRules/boldface.ts).
-- [ ] T075 [P] Export artifact cleanup rule (src/transform/cleanupRules/artifacts.ts).
+- [ ] T101 [P] Typography cleanup rule (src/transform/cleanupRules/typography.ts) (smart quotes, dashes, ellipses).
+- [ ] T102 [P] Heading normalization rule (src/transform/cleanupRules/headings.ts).
+- [ ] T103 [P] Smart word wrapping rule (src/transform/cleanupRules/wordWrap.ts) (92-character target).
+- [ ] T104 [P] Footnote positioning rule (src/transform/cleanupRules/footnotes.ts).
+- [ ] T105 [P] Boldface punctuation rule (src/transform/cleanupRules/boldface.ts).
+- [ ] T106 [P] Export artifact cleanup rule (src/transform/cleanupRules/artifacts.ts).
 
 ### Filesystem & Manifest
-- [x] T076 Implement atomic file writer (src/fs/atomicWriter.ts).
-- [x] T077 Implement manifest load/save & diff (src/fs/manifest.ts).
-- [x] T078 Implement attachment storage layout & path builder (src/fs/attachments.ts).
-- [x] T079 Implement resume journal handling (src/fs/resumeJournal.ts).
-- [x] T080 Implement slug collision resolver (src/fs/slugCollision.ts) (uses slug generation + suffix logic).
+- [x] T107 Implement atomic file writer (src/fs/atomicWriter.ts).
+- [x] T108 Implement manifest load/save & diff (src/fs/manifest.ts).
+- [x] T109 Implement attachment storage layout & path builder (src/fs/attachments.ts).
+- [x] T110 Implement resume journal handling (src/fs/resumeJournal.ts).
+- [x] T111 Implement slug collision resolver (src/fs/slugCollision.ts) (uses slug generation + suffix logic).
 
 ### Services / Orchestration
-- [x] T081 Implement incremental diff service (src/services/incrementalDiff.ts) (compare old/new manifest entries + hashes).
-- [ ] T082 Implement markdown cleanup service orchestrator (src/services/markdownCleanupService.ts).
-- [x] T083 Implement export orchestration pipeline (src/core/exportRunner.ts) (fetch, transform, write, manifest update, link rewrite final pass).
-- [x] T084 Integrate performance instrumentation (pages/sec, timings, memory usage <300MB per NFR-002) (src/core/performanceCollector.ts or inline instrumentation).
-- [x] T085 Implement exit status evaluation (threshold checks) (src/core/exitStatus.ts).
-- [x] T086 Implement Markdown file validation (src/core/markdownValidator.ts) (validate front matter completeness, file extensions, basic structure per FR-015).
+- [x] T112 Implement incremental diff service (src/services/incrementalDiff.ts) (compare old/new manifest entries + hashes).
+- [ ] T113 Implement markdown cleanup service orchestrator (src/services/markdownCleanupService.ts).
+- [ ] T114 Implement queue processing service with retry logic (src/services/queueProcessingService.ts) (implements FR-036, FR-037).
+- [x] T115 Implement export orchestration pipeline with queue integration (src/core/exportRunner.ts) (fetch, transform, write, manifest update, link rewrite final pass, queue processing).
+- [x] T116 Integrate performance instrumentation (pages/sec, timings, memory usage <300MB per NFR-002) (src/core/performanceCollector.ts or inline instrumentation).
+- [x] T117 Implement exit status evaluation (threshold checks) (src/core/exitStatus.ts).
+- [x] T118 Implement Markdown file validation (src/core/markdownValidator.ts) (validate front matter completeness, file extensions, basic structure per FR-015).
 
 ### CLI
-- [x] T087 Implement CLI command & options (src/cli/index.ts) using commander (flags: --space, --out, --dry-run, --concurrency, --resume, --fresh, --root, --log-level).
-- [x] T088 Wire config/env resolution & validation in CLI (src/cli/configLoader.ts) (produces ExportConfig).
-- [x] T089 Implement progress logging (pages processed/remaining, warnings) (src/cli/progress.ts).
-- [x] T090 Implement graceful interrupt handler (SIGINT) writing sentinel (src/cli/interrupt.ts).
-- [x] T091 Build script & bin entrypoint header (dist/cli/index.js) (update package.json bin field).
+- [x] T119 Implement CLI command & options (src/cli/index.ts) using commander (flags: --space, --out, --dry-run, --concurrency, --resume, --fresh, --root, --log-level).
+- [x] T120 Wire config/env resolution & validation in CLI (src/cli/configLoader.ts) (produces ExportConfig).
+- [x] T121 Implement progress logging with queue metrics (src/cli/progress.ts) (pages processed/remaining, warnings, queue size, discovery rate).
+- [x] T122 Implement graceful interrupt handler (SIGINT) writing sentinel (src/cli/interrupt.ts).
+- [x] T123 Build script & bin entrypoint header (dist/cli/index.js) (update package.json bin field).
 
 ## Phase 3.4: Integration & Hardening
-- [x] T092 Implement attachment failure threshold enforcement (src/core/thresholds.ts) (percent & absolute logic).
-- [x] T093 Implement restricted page handling (skip & warn) (src/services/restrictedHandling.ts).
-- [x] T094 Implement root page filter logic (src/services/rootFilter.ts).
-- [x] T095 Implement resume mode guard (require --resume / --fresh if sentinel present) (src/core/resumeGuard.ts).
-- [ ] T096 Implement final link rewrite pass after all pages exported (src/core/finalizeLinks.ts).
-- [ ] T097 Implement dry-run planner output (src/core/dryRunPlanner.ts) (no writes, logs plan).
-- [ ] T098 Integrate cleanup service into existing export pipeline (src/core/exportRunner.ts) (update to include automatic cleanup post-processing).
-- [ ] T099 Error handling and partial cleanup strategy across all cleanup rules.
-- [ ] T100 Performance monitoring and metrics collection for <1s cleanup target.
-- [ ] T101 Logging infrastructure for cleanup rule success/failure tracking.
-- [ ] T102 Configuration management for cleanup intensity levels (light/medium/heavy).
-- [ ] T103 CLI integration for cleanup options (--cleanup-intensity, --cleanup-disable).
-- [ ] T104 Implement performance summary output block (src/core/metrics.ts) (including cleanup statistics).
-- [ ] T105 Implement structured error classification (network vs content vs permission vs cleanup) (src/core/errorClassifier.ts).
+- [x] T124 Implement attachment failure threshold enforcement (src/core/thresholds.ts) (percent & absolute logic).
+- [x] T125 Implement restricted page handling (skip & warn) (src/services/restrictedHandling.ts).
+- [x] T126 Implement root page filter logic (src/services/rootFilter.ts).
+- [x] T127 Implement resume mode guard (require --resume / --fresh if sentinel present) (src/core/resumeGuard.ts).
+- [ ] T128 Implement final link rewrite pass after all pages exported (src/core/finalizeLinks.ts).
+- [ ] T129 Implement dry-run planner output with queue simulation (src/core/dryRunPlanner.ts) (no writes, logs plan including discovered pages).
+- [ ] T130 Integrate cleanup service into existing export pipeline (src/core/exportRunner.ts) (update to include automatic cleanup post-processing).
+- [ ] T131 Integrate queue processing into export pipeline (src/core/exportRunner.ts) (queue initialization, processing loop, state persistence) (implements FR-033, FR-034, FR-036).
+- [ ] T132 Error handling and partial cleanup strategy across all cleanup rules.
+- [ ] T133 Performance monitoring and metrics collection for <1s cleanup target.
+- [ ] T134 Logging infrastructure for cleanup rule success/failure tracking.
+- [ ] T135 Configuration management for cleanup intensity levels (light/medium/heavy).
+- [ ] T136 CLI integration for cleanup options (--cleanup-intensity, --cleanup-disable).
+- [ ] T137 Queue corruption detection and recovery mechanisms (src/queue/queueRecovery.ts) (implements FR-039).
+- [ ] T138 Queue size monitoring and alerting thresholds (src/queue/queueMonitoring.ts) (supports FR-040).
+- [ ] T139 Implement performance summary output block with queue statistics (src/core/metrics.ts) (including cleanup and queue statistics) (implements FR-040).
+- [ ] T140 Implement structured error classification including queue errors (src/core/errorClassifier.ts) (network vs content vs permission vs cleanup vs queue).
 
 ## Phase 3.5: Polish & Validation
-- [ ] T106 [P] Add additional unit tests for error utilities (tests/unit/errors.test.ts).
-- [ ] T107 [P] Add unit tests for resume journal logic (tests/unit/resume_journal.test.ts).
-- [ ] T108 [P] Add unit tests for manifest diff edge cases (deleted pages) (tests/unit/manifest_diff_deleted.test.ts).
-- [ ] T109 [P] Add CLI help output snapshot test (tests/unit/cli_help.test.ts).
-- [ ] T110 [P] Add performance test harness script for cleanup benchmarks (tests/integration/perf_harness.test.ts) (may be skipped by default).
-- [ ] T111 [P] Performance benchmarking suite for various document sizes.
-- [ ] T112 [P] Update README with usage examples, performance notes, and cleanup features.
-- [ ] T113 [P] Update quickstart with cleanup configuration examples and resume/dry-run clarifications.
-- [ ] T114 [P] Add JSDoc comments to all public cleanup APIs.
-- [ ] T115 PRIORITY: Coverage validation (>95% for all modules per constitution including cleanup).
-- [ ] T116 Run quickstart.md validation scenarios (including cleanup scenarios).
-- [ ] T117 Memory usage profiling and optimization review (including cleanup impact).
-- [ ] T118 Refactor & de-duplicate transformation utilities (consolidate similar functions in src/transform/, remove unused exports, optimize attachment path resolution per code review findings).
-- [ ] T119 Run lint & fix remaining style issues.
-- [ ] T120 PRIORITY: Ensure TypeScript strict mode passes (enable `strict` in tsconfig if not yet) and verify ≥95% line coverage per constitution.
-- [ ] T121 Final pass: remove TODO markers not deferred intentionally.
+- [ ] T141 [P] Add additional unit tests for error utilities (tests/unit/errors.test.ts).
+- [ ] T142 [P] Add unit tests for resume journal logic (tests/unit/resume_journal.test.ts).
+- [ ] T143 [P] Add unit tests for manifest diff edge cases (deleted pages) (tests/unit/manifest_diff_deleted.test.ts).
+- [ ] T144 [P] Add CLI help output snapshot test (tests/unit/cli_help.test.ts).
+- [ ] T145 [P] Add performance test harness script for cleanup benchmarks (tests/integration/perf_harness.test.ts) (may be skipped by default).
+- [ ] T146 [P] Add unit tests for queue edge cases (empty queue, corruption scenarios) (tests/unit/queue_edge_cases.test.ts).
+- [ ] T147 [P] Add integration tests for queue performance under load (tests/integration/queue_performance_load.test.ts).
+- [ ] T148 [P] Performance benchmarking suite for various document sizes.
+- [ ] T149 [P] Update README with usage examples, performance notes, cleanup features, and queue functionality.
+- [ ] T150 [P] Update quickstart with cleanup configuration examples, queue monitoring, and resume/dry-run clarifications.
+- [ ] T151 [P] Add JSDoc comments to all public cleanup APIs and queue interfaces.
+- [ ] T152 PRIORITY: Coverage validation (>95% for all modules per constitution including cleanup and queue).
+- [ ] T153 Run quickstart.md validation scenarios (including cleanup and queue scenarios).
+- [ ] T154 Memory usage profiling and optimization review (including cleanup and queue impact).
+- [ ] T155 Refactor & de-duplicate transformation utilities (consolidate similar functions in src/transform/, remove unused exports, optimize attachment path resolution per code review findings).
+- [ ] T156 Run lint & fix remaining style issues.
+- [ ] T157 PRIORITY: Ensure TypeScript strict mode passes (enable `strict` in tsconfig if not yet) and verify ≥95% line coverage per constitution.
+- [ ] T158 Final pass: remove TODO markers not deferred intentionally.
 
 ## Dependencies Overview
 - Setup (T001–T011) precedes all.
-- Contract & integration & unit skeleton tests (T012–T051) precede implementation tasks (T052+).
-- Export models/utilities (T052, T054–T058) unblock client & transformer tasks (T060–T069).
-- Cleanup models (T053, T059) unblock cleanup rule implementation (T070–T075).
-- Client pagination & page/attachment fetching (T060–T065) precede orchestration (T083).
-- Basic transformer (T066) precedes enhanced transformer with cleanup (T067).
-- Cleanup rules (T070–T075) precede cleanup service (T082).
-- Cleanup service (T082) precedes enhanced transformer integration (T067).
-- Manifest & FS tasks (T076–T080) required before orchestration (T083) finalization & incremental diff (T081).
-- CLI tasks (T087–T091) depend on core + models + config utilities (T052–T058, T083 partially for end-to-end tests to pass; can stub early for help output test).
-- Integration & hardening (T092–T105) depend on orchestration baseline (T083) and utilities.
-- Polish tasks (T106–T121) occur after earlier phases green.
+- Contract & integration & unit skeleton tests (T012–T071) precede implementation tasks (T072+).
+- Export models/utilities (T072, T076–T083) unblock client & transformer tasks (T091–T100).
+- Queue models (T075) and core queue implementation (T084–T090) unblock queue integration tasks (T114, T131).
+- Cleanup models (T073, T081) unblock cleanup rule implementation (T101–T106).
+- Client pagination & page/attachment fetching (T091–T096) precede orchestration (T115).
+- Basic transformer (T097) precedes enhanced transformer with cleanup and queue discovery (T098).
+- Cleanup rules (T101–T106) precede cleanup service (T113).
+- Queue core (T084–T090) precedes queue processing service (T114) and integration (T131).
+- Cleanup service (T113) precedes enhanced transformer integration (T098).
+- Enhanced transformer with queue discovery (T098) precedes export orchestration (T115).
+- Manifest & FS tasks (T107–T111) required before orchestration (T115) finalization & incremental diff (T112).
+- CLI tasks (T119–T123) depend on core + models + config utilities (T072–T083, T115 partially for end-to-end tests to pass; can stub early for help output test).
+- Integration & hardening (T124–T140) depend on orchestration baseline (T115) and utilities.
+- Queue integration tasks (T131, T137–T138) depend on queue core implementation (T087, T114).
+- Polish tasks (T141–T158) occur after earlier phases green.
 
 ## Parallel Execution Guidance
 Example early parallel batch (after T001–T011):
 ```
 # Contract tests
-T012 T013 T014 T015 T016 T017 T018 T019 T020
-# Integration tests  
-T021 T022 T023 T024 T025 T026 T027 T028 T029 T030 T031 T032 T033 T034 T035 T036
-# Unit test skeletons
-T037 T038 T039 T040 T041 T042 T043 T044 T045 T046 T047 T048 T049 T050 T051
+T012 T013 T014 T015 T016 T017 T018
+# Integration tests (cleanup & queue)
+T021 T022 T023 T024 T025 T026 T027 T028 T029 T030 T031 T032 T033 T034 T035 T036 T037 T038
+# Queue integration tests
+T039 T040 T041 T042 T043 T044 T045 T046
+# Unit test skeletons (utilities & queue)
+T047 T048 T049 T050 T051 T052 T053 T054 T055 T056 T057 T058 T059 T060 T061 T062 T063
+# Queue unit tests
+T064 T065 T066 T067 T068 T069 T070 T071
 ```
 Example implementation parallel batch (post failing tests):
 ```
-T052 T053 T054 T055 T056 T057 T058 T059
-T070 T071 T072 T073 T074 T075
+# Models & types
+T072 T073 T074 T075
+# Utilities
+T076 T077 T078 T079 T080 T081 T082 T083
+# Queue core components
+T084 T085 T086 T088 T089
+# Cleanup rules
+T101 T102 T103 T104 T105 T106
 ```
 Later parallel examples:
 ```
-T066 T068 T069
-T076 T077 T078 T079 T080
-T106 T107 T108 T109 T110 T111 T112 T113 T114
+# Transform & filesystem
+T097 T099 T100 T107 T108 T109 T110 T111
+# Polish tasks
+T141 T142 T143 T144 T145 T146 T147 T148 T149 T150 T151
 ```
 Ensure no two [P] tasks modify the same file concurrently.
 
+**Queue-specific parallel batches**:
+```
+# Queue core (independent components)
+T084 T085 T086 T088 T089
+# Queue integration tests
+T039 T040 T041 T042 T043 T044 T045 T046
+# Queue unit tests
+T064 T065 T066 T067 T068 T069 T070 T071
+```
+
 ## Validation Checklist
-- [ ] All contract files mapped to contract test tasks (T012–T020)
-- [ ] All entities mapped to model/types (T052–T053)
+- [ ] All contract files mapped to contract test tasks (T012–T018)
+- [ ] All entities mapped to model/types (T072–T075)
+- [ ] All queue entities and operations have corresponding tests (T039–T046, T064–T071)
 - [ ] Tests precede implementation tasks
 - [ ] Parallel tasks isolated by file
-- [ ] CLI flags covered (T087–T091, T103)
-- [ ] Resume + thresholds + diff logic tasks included (T079 T081 T092 T095)
-- [ ] Performance instrumentation & test tasks included (T084 T029 T031 T104 T110–T111)
-- [ ] Cleanup integration tasks included (T067 T082 T098–T105)
-- [ ] Constitution compliance covered (performance T100, coverage T115, docs T112–T114)
+- [ ] CLI flags covered (T119–T123, T136)
+- [ ] Resume + thresholds + diff logic tasks included (T110 T112 T124 T127)
+- [ ] Performance instrumentation & test tasks included (T116 T031 T133 T139 T147–T148)
+- [ ] Cleanup integration tasks included (T098 T113 T130–T136)
+- [ ] Queue integration tasks included (T087 T098 T114 T131 T137–T138)
+- [ ] Constitution compliance covered (performance T133, coverage T152, docs T149–T151)
+- [ ] Queue discovery and processing workflow complete (T084–T090, T098, T114, T131)
+- [ ] Queue persistence and recovery mechanisms implemented (T085, T137)
+- [ ] Queue performance and monitoring capabilities (T086, T138, T147)
 
 ## Notes
 - Performance tests may be initially skipped pending environment stability.
 - Title rename redirect mapping intentionally deferred (future task backlog).
 - Cleanup features integrated as automatic post-processing with configurable intensity.
-- Constitution compliance: Performance target <1s cleanup per file, >95% coverage, observability.
-- TDD workflow enforced: All tests (T012–T051) must fail before any implementation (T052+).
-- Automatic integration: CLI modification (T103) and export pipeline integration (T098).
-- Partial cleanup strategy: Error handling implementation (T099) with rule independence.
-- Flowmark inspiration: Typography rules (T070), word wrapping (T072), content preservation (T035).
+- **Global download queue functionality integrated as core export enhancement with:**
+  - Automatic discovery of page dependencies during transformation
+  - Persistent queue state for resume capability after interruption  
+  - FIFO processing with circular reference detection
+  - Comprehensive error handling and retry mechanisms
+  - Performance monitoring and queue statistics reporting
+- Constitution compliance: Performance target <1s cleanup per file, queue operations <1ms, >95% coverage, observability.
+- TDD workflow enforced: All tests (T012–T071) must fail before any implementation (T072+).
+- Automatic integration: CLI modification (T136) and export pipeline integration (T130–T131).
+- Partial cleanup strategy: Error handling implementation (T132) with rule independence.
+- Queue processing strategy: Breadth-first discovery (T087) with persistent state management (T085).
+- Flowmark inspiration: Typography rules (T101), word wrapping (T103), content preservation (T035).
+- **Queue architecture**: Modular design in `src/queue/` with clear separation of concerns for core operations, persistence, metrics, and discovery.
