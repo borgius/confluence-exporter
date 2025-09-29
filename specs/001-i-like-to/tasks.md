@@ -12,67 +12,67 @@
 - All tests precede implementation (TDD). Ensure each new test fails before implementing passing code.
 
 ## Phase 3.1: Setup
-- [ ] T001 Initialize Node.js project (package.json) with type:module, add scripts (build, test, lint) in repository root.
-- [ ] T002 Add dependencies: runtime (`axios`, `commander`, `gray-matter`, `p-limit`, `winston`) and dev (`typescript`, `ts-node`, `jest`, `ts-jest`, `@types/jest`, `eslint`, `@typescript-eslint/parser`, `@typescript-eslint/eslint-plugin`, `nodemon`, `nock`).
-- [ ] T003 Configure TypeScript (`tsconfig.json`) targeting ES2022, outDir `dist`, rootDir `src`.
-- [ ] T004 Configure ESLint + Prettier integration (if used) with project rules (no unused vars, complexity ≤10) and add npm `lint` script.
-- [ ] T005 Create project directory structure (`src/cli`, `src/core`, `src/confluence`, `src/transform`, `src/fs`, `src/models`, `src/services`, `src/util`, `tests/unit`, `tests/integration`, `tests/contract`).
-- [ ] T006 Add basic README with short description and link to quickstart.
-- [ ] T007 Add license file (placeholder MIT) and `.gitignore` (node, dist, coverage, temp export markers).
+- [x] T001 Initialize Node.js project (package.json) with type:module, add scripts (build, test, lint) in repository root.
+- [x] T002 Add dependencies: runtime (`axios`, `commander`, `gray-matter`, `p-limit`, `winston`) and dev (`typescript`, `ts-node`, `jest`, `ts-jest`, `@types/jest`, `eslint`, `@typescript-eslint/parser`, `@typescript-eslint/eslint-plugin`, `nodemon`, `nock`).
+- [x] T003 Configure TypeScript (`tsconfig.json`) targeting ES2022, outDir `dist`, rootDir `src`.
+- [x] T004 Configure ESLint + Prettier integration (if used) with project rules (no unused vars, complexity ≤10) and add npm `lint` script.
+- [x] T005 Create project directory structure (`src/cli`, `src/core`, `src/confluence`, `src/transform`, `src/fs`, `src/models`, `src/services`, `src/util`, `tests/unit`, `tests/integration`, `tests/contract`).
+- [x] T006 Add basic README with short description and link to quickstart.
+- [x] T007 Add license file (placeholder MIT) and `.gitignore` (node, dist, coverage, temp export markers).
 
 ## Phase 3.2: Tests First (TDD)
 ### Contract Tests (from contracts/confluence-api.md)
-- [ ] T008 [P] Contract test: GET space success (tests/contract/get_space.test.ts) using `nock` fixture.
-- [ ] T009 [P] Contract test: GET paginated space content listing (tests/contract/list_pages_pagination.test.ts).
-- [ ] T010 [P] Contract test: GET page with storage & ancestors (tests/contract/get_page_with_body.test.ts).
-- [ ] T011 [P] Contract test: GET attachments pagination (tests/contract/get_attachments.test.ts).
-- [ ] T012 [P] Contract test: Rate limit 429 + Retry-After honored (tests/contract/rate_limit_retry.test.ts).
-- [ ] T013 [P] Contract test: Basic Auth header presence (tests/contract/basic_auth_header.test.ts).
+- [x] T008 [P] Contract test: GET space success (tests/contract/get_space.test.ts) using `nock` fixture.
+- [x] T009 [P] Contract test: GET paginated space content listing (tests/contract/list_pages_pagination.test.ts).
+- [x] T010 [P] Contract test: GET page with storage & ancestors (tests/contract/get_page_with_body.test.ts).
+- [x] T011 [P] Contract test: GET attachments pagination (tests/contract/get_attachments.test.ts).
+- [x] T012 [P] Contract test: Rate limit 429 + Retry-After honored (tests/contract/rate_limit_retry.test.ts).
+- [x] T013 [P] Contract test: Basic Auth header presence (tests/contract/basic_auth_header.test.ts).
 
 ### Integration Tests (from user story + edge cases + quickstart)
-- [ ] T014 [P] Integration: Full export happy path (tests/integration/full_export_happy.test.ts) generates manifest & files.
-- [ ] T015 [P] Integration: Resume interrupted export (tests/integration/resume_export.test.ts) uses sentinel + journal simulation.
-- [ ] T016 [P] Integration: Attachment failure threshold triggers non-zero exit (tests/integration/attachment_threshold.test.ts).
-- [ ] T017 [P] Integration: Slug collision resolution (tests/integration/slug_collision.test.ts).
-- [ ] T018 [P] Integration: Internal link rewrite correctness (tests/integration/link_rewrite.test.ts).
-- [ ] T019 [P] Integration: Root page filter exports subtree only (tests/integration/root_filter.test.ts).
-- [ ] T020 [P] Integration: Restricted page skipped with manifest status denied (tests/integration/restricted_page_skip.test.ts).
-- [ ] T021 [P] Integration: Dry-run creates no files but logs plan (tests/integration/dry_run.test.ts).
-- [ ] T022 [P] Integration: Performance baseline instrumentation exports ≥1.2 pages/sec (tests/integration/perf_baseline.test.ts) (may be tagged slow/skipped initially).
+- [x] T014 [P] Integration: Full export happy path (tests/integration/full_export_happy.test.ts) generates manifest & files.
+- [x] T015 [P] Integration: Resume interrupted export (tests/integration/resume_export.test.ts) uses sentinel + journal simulation.
+- [x] T016 [P] Integration: Attachment failure threshold triggers non-zero exit (tests/integration/attachment_threshold.test.ts).
+- [x] T017 [P] Integration: Slug collision resolution (tests/integration/slug_collision.test.ts).
+- [x] T018 [P] Integration: Internal link rewrite correctness (tests/integration/link_rewrite.test.ts).
+- [x] T019 [P] Integration: Root page filter exports subtree only (tests/integration/root_filter.test.ts).
+- [x] T020 [P] Integration: Restricted page skipped with manifest status denied (tests/integration/restricted_page_skip.test.ts).
+- [x] T021 [P] Integration: Dry-run creates no files but logs plan (tests/integration/dry_run.test.ts).
+- [x] T022 [P] Integration: Performance baseline instrumentation exports ≥1.2 pages/sec (tests/integration/perf_baseline.test.ts) (may be tagged slow/skipped initially).
 
 ### Unit Test Skeletons (key utilities) – still before implementation to enforce TDD
-- [ ] T023 [P] Unit: Slugification rules (tests/unit/slugify.test.ts) covers normalization & collisions.
-- [ ] T024 [P] Unit: Retry backoff schedule generation (tests/unit/backoff.test.ts).
-- [ ] T025 [P] Unit: Hash computation stability (tests/unit/hash.test.ts).
-- [ ] T026 [P] Unit: Markdown transformer basic constructs (tests/unit/transformer_basic.test.ts).
-- [ ] T027 [P] Unit: Manifest diff logic (tests/unit/manifest_diff.test.ts).
-- [ ] T028 [P] Unit: Attachment path rewriting (tests/unit/attachment_rewrite.test.ts).
-- [ ] T029 [P] Unit: Link rewrite mapping resolution (tests/unit/link_rewrite_map.test.ts).
-- [ ] T030 [P] Unit: Config validation (tests/unit/config_validation.test.ts).
+- [x] T023 [P] Unit: Slugification rules (tests/unit/slugify.test.ts) covers normalization & collisions.
+- [x] T024 [P] Unit: Retry backoff schedule generation (tests/unit/backoff.test.ts).
+- [x] T025 [P] Unit: Hash computation stability (tests/unit/hash.test.ts).
+- [x] T026 [P] Unit: Markdown transformer basic constructs (tests/unit/transformer_basic.test.ts).
+- [x] T027 [P] Unit: Manifest diff logic (tests/unit/manifest_diff.test.ts).
+- [x] T028 [P] Unit: Attachment path rewriting (tests/unit/attachment_rewrite.test.ts).
+- [x] T029 [P] Unit: Link rewrite mapping resolution (tests/unit/link_rewrite_map.test.ts).
+- [x] T030 [P] Unit: Config validation (tests/unit/config_validation.test.ts).
 
 ## Phase 3.3: Core Implementation (after tests exist & fail)
 ### Models & Types
-- [ ] T031 [P] Define TypeScript interfaces/types for entities (src/models/entities.ts) (Space, Page, Attachment, ManifestEntry, ExportJob, LinkReference, ExportConfig, RetryPolicy).
+- [x] T031 [P] Define TypeScript interfaces/types for entities (src/models/entities.ts) (Space, Page, Attachment, ManifestEntry, ExportJob, LinkReference, ExportConfig, RetryPolicy).
 
 ### Utilities & Low-level Helpers
-- [ ] T032 [P] Implement slugify utility (src/util/slugify.ts).
-- [ ] T033 [P] Implement retry/backoff utility with jitter & Retry-After handling (src/util/retry.ts).
-- [ ] T034 [P] Implement hash utility (src/util/hash.ts) SHA-256 truncate 12 hex.
-- [ ] T035 [P] Implement logger wrapper producing line-delimited JSON (src/util/logger.ts).
-- [ ] T036 [P] Implement config validation (src/util/config.ts) (env + CLI merge, Basic Auth encoding).
+- [x] T032 [P] Implement slugify utility (src/util/slugify.ts).
+- [x] T033 [P] Implement retry/backoff utility with jitter & Retry-After handling (src/util/retry.ts).
+- [x] T034 [P] Implement hash utility (src/util/hash.ts) SHA-256 truncate 12 hex.
+- [x] T035 [P] Implement logger wrapper producing line-delimited JSON (src/util/logger.ts).
+- [x] T036 [P] Implement config validation (src/util/config.ts) (env + CLI merge, Basic Auth encoding).
 
 ### Confluence Client
-- [ ] T037 Create base HTTP client with axios + interceptors (src/confluence/httpClient.ts) (auth header injection, retry integration).
-- [ ] T038 Implement getSpace (src/confluence/getSpace.ts) using client.
-- [ ] T039 Implement listPages paginator (src/confluence/listPages.ts) breadth-first with pagination.
-- [ ] T040 Implement getPageWithBody (src/confluence/getPageWithBody.ts) retrieving storage & ancestors.
-- [ ] T041 Implement listAttachments paginator (src/confluence/listAttachments.ts).
-- [ ] T042 Implement downloadAttachment (src/confluence/downloadAttachment.ts) streaming to temp file.
+- [x] T037 Create base HTTP client with axios + interceptors (src/confluence/httpClient.ts) (auth header injection, retry integration).
+- [x] T038 Implement getSpace (src/confluence/getSpace.ts) using client.
+- [x] T039 Implement listPages paginator (src/confluence/listPages.ts) breadth-first with pagination.
+- [x] T040 Implement getPageWithBody (src/confluence/getPageWithBody.ts) retrieving storage & ancestors.
+- [x] T041 Implement listAttachments paginator (src/confluence/listAttachments.ts).
+- [x] T042 Implement downloadAttachment (src/confluence/downloadAttachment.ts) streaming to temp file.
 
 ### Transformation & Processing
-- [ ] T043 Implement content transformer interface + basic implementation (src/transform/markdownTransformer.ts).
-- [ ] T044 Implement link extraction & rewrite mapping builder (src/transform/linkRewrite.ts).
-- [ ] T045 Implement attachment reference rewrite utility (src/transform/attachmentRewrite.ts).
+- [x] T043 Implement content transformer interface + basic implementation (src/transform/markdownTransformer.ts).
+- [x] T044 Implement link extraction & rewrite mapping builder (src/transform/linkRewrite.ts).
+- [x] T045 Implement attachment reference rewrite utility (src/transform/attachmentRewrite.ts).
 
 ### Filesystem & Manifest
 - [ ] T046 Implement atomic file writer (src/fs/atomicWrite.ts).

@@ -1,4 +1,8 @@
-import { ExportConfig, RetryPolicyConfig } from '../models/entities.js';
+import type { ExportConfig, RetryPolicyConfig } from '../models/entities.js';
+import { config as loadDotenv } from 'dotenv';
+
+// Load .env file if it exists
+loadDotenv();
 
 export interface RawEnv {
   CONFLUENCE_BASE_URL?: string;
