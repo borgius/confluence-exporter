@@ -75,17 +75,17 @@
 - [x] T045 Implement attachment reference rewrite utility (src/transform/attachmentRewrite.ts).
 
 ### Filesystem & Manifest
-- [ ] T046 Implement atomic file writer (src/fs/atomicWrite.ts).
-- [ ] T047 Implement manifest load/save & diff (src/fs/manifest.ts).
-- [ ] T048 Implement attachment storage layout & path builder (src/fs/attachments.ts).
-- [ ] T049 Implement resume journal handling (src/fs/resumeJournal.ts).
-- [ ] T050 Implement slug collision resolver (src/fs/slugCollision.ts) (uses slugify + suffix logic).
+- [x] T046 Implement atomic file writer (src/fs/atomicWrite.ts).
+- [x] T047 Implement manifest load/save & diff (src/fs/manifest.ts).
+- [x] T048 Implement attachment storage layout & path builder (src/fs/attachments.ts).
+- [x] T049 Implement resume journal handling (src/fs/resumeJournal.ts).
+- [x] T050 Implement slug collision resolver (src/fs/slugCollision.ts) (uses slugify + suffix logic).
 
 ### Services / Orchestration
-- [ ] T051 Implement incremental diff service (src/services/incrementalDiff.ts) (compare old/new manifest entries + hashes).
-- [ ] T052 Implement export orchestration pipeline (src/core/exportRunner.ts) (fetch, transform, write, manifest update, link rewrite final pass).
-- [ ] T053 Integrate performance instrumentation (pages/sec, timings) (src/core/metrics.ts or inline instrumentation).
-- [ ] T054 Implement exit status evaluation (threshold checks) (src/core/exitStatus.ts).
+- [x] T051 Implement incremental diff service (src/services/incrementalDiff.ts) (compare old/new manifest entries + hashes).
+- [x] T052 Implement export orchestration pipeline (src/core/exportRunner.ts) (fetch, transform, write, manifest update, link rewrite final pass).
+- [x] T053 Integrate performance instrumentation (pages/sec, timings) (src/core/metrics.ts or inline instrumentation).
+- [x] T054 Implement exit status evaluation (threshold checks) (src/core/exitStatus.ts).
 
 ### CLI
 - [ ] T055 Implement CLI command & options (src/cli/index.ts) using commander (flags: --space, --out, --dry-run, --concurrency, --resume, --fresh, --root, --log-level).
