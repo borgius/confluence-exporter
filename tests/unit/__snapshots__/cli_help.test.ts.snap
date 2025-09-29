@@ -1,0 +1,31 @@
+// Jest Snapshot v1, https://jestjs.io/docs/snapshot-testing
+
+exports[`CLI Help Output Main Help Output should display main help with all commands and options: main-help-output 1`] = `
+"[999D[K  [2mconsole.log[22m
+    [dotenv@17.2.2] injecting env (3) from .env [2m-- tip: ⚙️  load multiple .env files with { path: ['.env.local', '.env'] }[0m
+[2m[22m
+[2m      [2mat _log ([22m[2mnode_modules/dotenv/lib/main.js[2m:139:11)[22m[2m[22m
+
+"
+`;
+
+exports[`CLI Help Output Snapshot Consistency should maintain consistent help output format: normalized-help-output 1`] = `
+"Usage: confluence-exporter [options]
+
+Export Confluence space to Markdown files with hierarchy preservation
+
+Options:
+  -V, --version                     output the version number
+  --space <space>                   Confluence space key or name to export
+  --out <directory>                 Output directory (default: ./spaces/<space_key>)
+  --dry-run                         Show what would be exported without writing files (default: false)
+  --concurrency <number>            Number of concurrent API requests (default: "5")
+  --resume                          Resume interrupted export (requires previous export state)
+  --fresh                           Start fresh export (remove any previous state)
+  --root <pageId>                   Root page ID to limit export scope (optional)
+  --log-level <level>               Log level: error, warn, info, debug (default: "info")
+  --config <file>                   Configuration file path (optional)
+  --attachment-threshold <percent>  Attachment failure threshold percentage (default: "20")
+  -h, --help                        display help for command
+"
+`;

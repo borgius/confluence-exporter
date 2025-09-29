@@ -3,7 +3,7 @@
  * Implements T058: Graceful interrupt handler (SIGINT) writing sentinel
  */
 
-import { writeFileSync, existsSync, mkdirSync } from 'fs';
+import { writeFileSync, existsSync, mkdirSync, renameSync } from 'fs';
 import { join, dirname } from 'path';
 import { logger } from '../util/logger.js';
 
@@ -126,8 +126,7 @@ export function clearInterruptSentinel(outputDir: string): void {
     try {
       // Instead of deleting, we'll rename to indicate completion
       const completedPath = join(outputDir, '.export-completed');
-      const fs = require('fs');
-      fs.renameSync(sentinelPath, completedPath);
+      renameSync(sentinelPath, completedPath);
       
       logger.debug('Cleared interrupt sentinel', { sentinelPath, completedPath });
     } catch (error) {

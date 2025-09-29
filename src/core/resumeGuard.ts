@@ -64,6 +64,8 @@ export class ResumeModeGuard {
           sentinelPath: this.sentinelPath,
           error: error instanceof Error ? error.message : 'Unknown error',
         });
+        // Set default interrupt reason for corrupted files
+        interruptReason = 'Unknown interruption';
       }
     }
 

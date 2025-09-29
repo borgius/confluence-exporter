@@ -10,5 +10,11 @@ module.exports = {
   coverageDirectory: 'coverage',
   extensionsToTreatAsEsm: ['.ts'],
   testPathIgnorePatterns: ['/node_modules/', '/dist/'],
-  verbose: true
+  verbose: true,
+  moduleNameMapper: {
+    '^(\\.{1,2}/.*)\\.js$': '$1'
+  },
+  transformIgnorePatterns: [
+    'node_modules/(?!(p-limit|yocto-queue)/)'
+  ]
 };
