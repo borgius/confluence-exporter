@@ -43,7 +43,7 @@ As a developer or knowledge engineer, I want to fetch all pages from a given Con
 - Space contains extremely deep hierarchy (>7 levels). Handling depth without path length or recursion failure.
 - Circular-like link references (A links to B, B links back to A): ensure no infinite processing.
 - Large pages exceeding size limits (e.g., >1MB of content).
-- Pages with restricted permissions: skip with logged warning vs fail entire export? [NEEDS CLARIFICATION]
+- Pages with restricted permissions: skip with logged warning (default policy; export continues with manifest status "access_denied").
 - Deleted pages encountered in index vs API delivering stale references.
 - Non-ASCII characters in titles → filesystem-safe slug collisions (two pages with same sanitized name) resolved by appending short stable page ID fragment.
 - Attachment filename collisions.
@@ -61,16 +61,15 @@ As a developer or knowledge engineer, I want to fetch all pages from a given Con
 - **FR-007**: System MUST produce a manifest file (e.g., `spaces/<space_key>/manifest.json` or `.yml`) enumerating all exported pages with their source IDs and file paths.
 - **FR-008**: System MUST provide deterministic file naming (documented slugification). On slug collision, append short stable page ID fragment: `slug--<pageIdSuffix>.md` (chosen Option A) ensuring uniqueness without reorder.
 - **FR-009**: System MUST log progress (at minimum: pages processed, pages remaining, warnings, failures).
-- **FR-010**: System MUST exit with non-zero status if any page failed to export (unless failures are explicitly allowed via a flag). [NEEDS CLARIFICATION: skip vs fail policy]
+- **FR-010**: System MUST exit with non-zero status if any page failed to export (unless failures are explicitly allowed via `--allow-failures` flag). Default policy: skip restricted pages with warning but fail on other errors.
 - **FR-011**: System MUST provide full incremental export: detect changed pages (timestamp or hash), add new pages, update modified pages, and remove locally deleted pages; manifest MUST reflect deltas.
 - **FR-012**: System MUST avoid duplicate network fetches for already processed pages in a single run.
 - **FR-013**: System MUST handle rate limits & transient network/server errors using exponential backoff with jitter for up to 6 attempts: delays ~0.5–0.75s, 1–1.5s, 2–3s, 4–6s, 8–12s, 16–24s; if `Retry-After` header present, first delay MUST honor it (capped at 30s) overriding calculated value; failures after final attempt are counted and surfaced in exit status.
 - **FR-014**: System MUST provide a dry-run mode that lists planned exports without writing files.
 - **FR-015**: System MUST validate final Markdown files for basic structure (no empty required metadata fields).
 - **FR-016**: System MUST support configuration of space identifier input (space key vs name) while internally resolving canonical key.
-- **FR-017**: System MUST allow filtering by root page to limit scope (optional). [NEEDS CLARIFICATION: required for MVP?]
-- **FR-018**: System MUST detect and handle page title renames (update slug + redirect mapping file). [NEEDS CLARIFICATION: implement in MVP?]
-- **FR-019**: System SHOULD provide checksum or hash for exported content to detect changes externally (future RAG pipeline integration) — optional in MVP.
+- **FR-017**: System MUST allow filtering by root page to limit scope (included in MVP for focused exports).
+- **FR-018**: System SHOULD provide checksum or hash for exported content to detect changes externally (future RAG pipeline integration) — optional in MVP, deferred to post-MVP.
 - **FR-020**: System MUST produce output path stable across runs (idempotent naming) to facilitate downstream indexing.
  - **FR-021**: After a previously interrupted export is detected (presence of partial manifest / temp markers), the tool MUST require an explicit `--resume` or `--fresh` flag; default (no flag) MUST abort with clear guidance. `--resume` processes only missing/failed pages reusing valid artifacts; `--fresh` discards temp state and re-exports all pages.
 
@@ -88,10 +87,10 @@ As a developer or knowledge engineer, I want to fetch all pages from a given Con
 - **FR-032**: System MUST allow users to disable cleanup entirely via CLI flag for debugging or compatibility purposes
 
 ### Non-Functional / Quality Constraints
-- **NFR-001**: Export of a medium space (300-700 pages, light attachments) SHOULD complete within a target baseline (e.g., <10 minutes with standard network). [NEEDS CLARIFICATION: performance target]
-- **NFR-002**: Memory usage SHOULD remain bounded at <300MB RSS (streaming preferred over full in-memory graph). [NEEDS CLARIFICATION: memory ceiling]
+- **NFR-001**: Export of a medium space (300-700 pages, light attachments) MUST complete within 10 minutes with standard network conditions (baseline target for performance validation).
+- **NFR-002**: Memory usage MUST remain below 300MB RSS during export processing (streaming preferred over full in-memory graph).
 - **NFR-003**: All filesystem writes MUST be atomic (write temp then move) to prevent partial file corruption.
-- **NFR-004**: Logs MUST be structured enough to enable parsing for metrics (JSON or key=value lines). [NEEDS CLARIFICATION: logging format]
+- **NFR-004**: Logs MUST be structured as line-delimited JSON with required fields: level, timestamp, message, context.
 - **NFR-005**: Tool MUST be usable in CI environments (non-interactive). Authentication MUST use HTTP Basic Auth with a Confluence username and password provided via environment variables (e.g., `CONFLUENCE_USERNAME`, `CONFLUENCE_PASSWORD`) or CLI flags; credentials MUST be encoded as `Authorization: Basic <base64(username:password)>` without interactive prompts when running headless.
 - **NFR-006**: Markdown cleanup processing MUST complete within 1 second per individual markdown file to support interactive workflows and maintain overall export performance
 

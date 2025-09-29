@@ -113,13 +113,13 @@ Research Decisions (to record in `research.md`):
 3. Concurrency Model: Use `p-limit` with configurable concurrency (default 5) to respect rate limiting; alt naive Promise.all rejected (burst risk).
 4. Manifest Hashing: Use SHA-256 content hash (truncated 12 hex) for change detection; alt byte-length + timestamp rejected (less reliable).
 5. Resumability Markers: Write temp marker `.export-in-progress` with journal of completed page IDs to enable resume.
-6. Slugification: Use lowercase, replace spaces with `-`, remove unsafe chars, collapse dashes, trim, length cap 120 chars; stable.
+6. Slug Generation: Use lowercase, replace spaces with `-`, remove unsafe chars, collapse dashes, trim, length cap 120 chars; stable.
 7. Logging: Line JSON `{level,time,msg,context}`; final summary block.
 8. Testing Strategy: Contract tests mock a subset of API responses (pagination, attachment variants, rate limit 429 path).
 9. Markdown Cleanup: Use remark ecosystem (unified, remark-parse, remark-stringify) + textr for typography; implement plugin-based cleanup rules with partial failure support; default to "heavy" cleanup intensity; performance target <1s per file.
 10. Typography Enhancement: Smart quotes (straight → curly), dashes (-- → em-dash), ellipses (... → …) via textr-typographic-quotes and custom rules.
 11. Line Wrapping: 92-character soft wrapping inspired by flowmark; preserve code blocks, tables, and HTML content during reflow.
-12. Cleanup Integration: Automatic post-processing after markdown transformation; configurable intensity levels (light/medium/heavy); CLI options for control.
+12. Cleanup Integration: Automatic post-processing after markdown transformation; configurable cleanup intensity levels (light/medium/heavy); CLI options for control.
 
 Output: Create `research.md` capturing each decision with rationale & alternatives; ensure no remaining NEEDS CLARIFICATION block future design.
 
@@ -129,7 +129,7 @@ Prerequisite: `research.md` committed.
 1. Data Model (`data-model.md`): Detail entities Space, Page, Attachment, ExportJob, ManifestEntry, LinkReference, plus cleanup entities: MarkdownDocument, CleanupRule, CleanupResult, CleanupConfig, plus supplementary: ExportConfig, RetryPolicy. Include field types, constraints, and relationships (Page.parentId tree, Attachment.pageId, MarkdownDocument.sourcePageId). Add state transitions for ExportJob (INIT → RUNNING → COMPLETED|FAILED|ABORTED) and CleanupResult (PENDING → PROCESSING → COMPLETED|FAILED|SKIPPED).
 2. API Contracts (`/contracts/`): Not public external API; instead internal Confluence client contracts documented as pseudo OpenAPI subset (GET space, GET pages (paginated), GET page content, GET attachments). Provide schemas for responses we rely on; emphasize fields consumed. Provide a conversion interface contract: `IContentTransformer` with `toMarkdown(apiContent: ConfluenceContent) -> string`.
 3. Contract Tests (`tests/contract`): For each Confluence endpoint scenario: success, pagination multi-page, rate limited (429), attachment download. Tests initially failing (unimplemented client) but with response fixtures.
-4. Integration Scenarios (`tests/integration`): Full export happy path, interrupted export resume, attachment failure threshold triggering exit, slug collision, internal link rewrite correctness, markdown cleanup pipeline integration, cleanup partial failure handling.
+4. Integration Scenarios (`tests/integration`): Full export happy path, interrupted export resume, attachment failure threshold triggering exit, slug collision resolution, internal link rewrite correctness, markdown cleanup pipeline integration, cleanup partial failure handling.
 5. Quickstart (`quickstart.md`): Install, configure env vars, run dry-run, run export, interpret manifest & logs.
 6. Update agent context file via `.specify/scripts/bash/update-agent-context.sh copilot` after generating design docs.
 

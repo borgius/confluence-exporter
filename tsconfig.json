@@ -12,7 +12,12 @@
     "rootDir": "src",
     "outDir": "dist",
     "declaration": true,
-    "sourceMap": true
+    "sourceMap": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/cleanupRules/*": ["src/transform/cleanupRules/*"],
+      "@/cleanup": ["src/services/markdownCleanupService"]
+    }
   },
   "include": ["src"],
   "exclude": ["node_modules", "dist", "tests"]

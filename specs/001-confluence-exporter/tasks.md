@@ -19,10 +19,10 @@
 - [x] T005 Create project directory structure (`src/cli`, `src/core`, `src/confluence`, `src/transform`, `src/fs`, `src/models`, `src/services`, `src/util`, `tests/unit`, `tests/integration`, `tests/contract`).
 - [x] T006 Add basic README with short description and link to quickstart.
 - [x] T007 Add license file (placeholder MIT) and `.gitignore` (node, dist, coverage, temp export markers).
-- [ ] T008 Install remark ecosystem dependencies (unified, remark-parse, remark-stringify, remark-textr).
-- [ ] T009 Install textr typography dependencies (textr, typographic-quotes).
-- [ ] T010 [P] Update TypeScript paths for cleanup modules in tsconfig.json.
-- [ ] T011 [P] Update ESLint config to include cleanup rule directories.
+- [x] T008 Install remark ecosystem dependencies (unified, remark-parse, remark-stringify, remark-textr).
+- [x] T009 Install textr typography dependencies (textr, typographic-quotes).
+- [x] T010 [P] Update TypeScript paths for cleanup modules in tsconfig.json.
+- [x] T011 [P] Update ESLint config to include cleanup rule directories.
 
 ## Phase 3.2: Tests First (TDD)
 ### Contract Tests (from contracts/confluence-api.md + cleanup-api.yaml)
@@ -32,7 +32,7 @@
 - [x] T015 [P] Contract test: GET attachments pagination (tests/contract/get_attachments.test.ts).
 - [x] T016 [P] Contract test: Rate limit 429 + Retry-After honored (tests/contract/rate_limit_retry.test.ts).
 - [x] T017 [P] Contract test: Basic Auth header presence (tests/contract/basic_auth_header.test.ts).
-- [ ] T018 [P] Contract test: cleanup API POST /cleanup in tests/contract/cleanup_api.test.ts.
+- [x] T018 [P] Contract test: cleanup API POST /cleanup in tests/contract/cleanup_api.test.ts.
 
 ### Integration Tests (from user story + edge cases + quickstart + cleanup scenarios)
 - [x] T021 [P] Integration: Full export happy path (tests/integration/full_export_happy.test.ts) generates manifest & files.
@@ -44,16 +44,18 @@
 - [x] T027 [P] Integration: Restricted page skipped with manifest status denied (tests/integration/restricted_page_skip.test.ts).
 - [x] T028 [P] Integration: Dry-run creates no files but logs plan (tests/integration/dry_run.test.ts).
 - [x] T029 [P] Integration: Performance baseline instrumentation exports ≥1.2 pages/sec (tests/integration/perf_baseline.test.ts) (may be tagged slow/skipped initially).
-- [ ] T030 [P] Integration: Full cleanup pipeline with export integration (tests/integration/full_cleanup_pipeline.test.ts).
+- [x] T030 [P] Integration: Full cleanup pipeline with export integration (tests/integration/full_cleanup_pipeline.test.ts).
 - [ ] T031 [P] Integration: Cleanup performance validation (<1s target per file) (tests/integration/performance_cleanup.test.ts).
 - [ ] T032 [P] Integration: Typography improvements (smart quotes, dashes, ellipses) (tests/integration/typography_cleanup.test.ts).
 - [ ] T033 [P] Integration: Heading normalization and structure cleanup (tests/integration/heading_cleanup.test.ts).
 - [ ] T034 [P] Integration: Word wrapping with 92-character target (tests/integration/word_wrap_cleanup.test.ts).
 - [ ] T035 [P] Integration: Content preservation (code blocks, tables, HTML) (tests/integration/content_preservation.test.ts).
 - [ ] T036 [P] Integration: Partial cleanup on rule failures (tests/integration/error_handling_cleanup.test.ts).
+- [ ] T037 [P] Integration: Allow-failures flag validation (tests/integration/allow_failures_flag.test.ts).
+- [ ] T038 [P] Integration: Optional checksum generation (tests/integration/checksum_generation.test.ts).
 
 ### Unit Test Skeletons (key utilities) – still before implementation to enforce TDD
-- [x] T037 [P] Unit: Slugification rules (tests/unit/slugify.test.ts) covers normalization & collisions.
+- [x] T037 [P] Unit: Slug generation rules (tests/unit/slugify.test.ts) covers normalization & collisions.
 - [x] T038 [P] Unit: Retry backoff schedule generation (tests/unit/backoff.test.ts).
 - [x] T039 [P] Unit: Hash computation stability (tests/unit/hash.test.ts).
 - [x] T040 [P] Unit: Markdown transformer basic constructs (tests/unit/transformer_basic.test.ts).
@@ -61,26 +63,31 @@
 - [x] T042 [P] Unit: Attachment path rewriting (tests/unit/attachment_rewrite.test.ts).
 - [x] T043 [P] Unit: Link rewrite mapping resolution (tests/unit/link_rewrite_map.test.ts).
 - [x] T044 [P] Unit: Config validation (tests/unit/config_validation.test.ts).
-- [ ] T045 [P] Unit: Typography cleanup rules (tests/unit/typography_rules.test.ts).
+- [x] T045 [P] Unit: Typography cleanup rules (tests/unit/typography_rules.test.ts).
 - [ ] T046 [P] Unit: Heading normalization logic (tests/unit/heading_normalization.test.ts).
 - [ ] T047 [P] Unit: Word wrapping with preservation (tests/unit/word_wrap.test.ts).
 - [ ] T048 [P] Unit: Footnote positioning (tests/unit/footnote_positioning.test.ts).
 - [ ] T049 [P] Unit: Boldface punctuation cleanup (tests/unit/boldface_cleanup.test.ts).
 - [ ] T050 [P] Unit: Export artifact removal (tests/unit/artifact_removal.test.ts).
 - [ ] T051 [P] Unit: Cleanup service orchestration (tests/unit/cleanup_service.test.ts).
+- [ ] T052 [P] Unit: Allow-failures flag logic (tests/unit/allow_failures.test.ts).
+- [ ] T053 [P] Unit: Checksum generation utility (tests/unit/checksum.test.ts).
 
 ## Phase 3.3: Core Implementation (after tests exist & fail)
 ### Models & Types
 - [x] T052 [P] Define TypeScript interfaces/types for export entities (src/models/entities.ts) (Space, Page, Attachment, ManifestEntry, ExportJob, LinkReference, ExportConfig, RetryPolicy).
 - [ ] T053 [P] Define cleanup entities (src/models/markdownCleanup.ts) (MarkdownDocument, CleanupRule, CleanupResult, CleanupConfig, DocumentMetadata, supporting types).
+- [ ] T054 [P] Define entities for allow-failures flag and checksum utilities (src/models/optionalFeatures.ts).
 
 ### Utilities & Low-level Helpers
-- [x] T054 [P] Implement slugify utility (src/util/slugify.ts).
+- [x] T054 [P] Implement slug generation utility (src/util/slugify.ts).
 - [x] T055 [P] Implement retry/backoff utility with jitter & Retry-After handling (src/util/retry.ts).
 - [x] T056 [P] Implement hash utility (src/util/hash.ts) SHA-256 truncate 12 hex.
 - [x] T057 [P] Implement logger wrapper producing line-delimited JSON (src/util/logger.ts).
 - [x] T058 [P] Implement config validation (src/util/config.ts) (env + CLI merge, Basic Auth encoding).
 - [ ] T059 [P] Implement unified/remark parser utilities (src/util/markdownParser.ts).
+- [ ] T060 [P] Implement checksum utility for optional content hashing (src/util/checksum.ts).
+- [ ] T061 [P] Implement allow-failures flag processing utility (src/util/failureHandling.ts).
 
 ### Confluence Client
 - [x] T060 Create base HTTP client with axios + interceptors (src/confluence/httpClient.ts) (auth header injection, retry integration).
@@ -109,7 +116,7 @@
 - [x] T077 Implement manifest load/save & diff (src/fs/manifest.ts).
 - [x] T078 Implement attachment storage layout & path builder (src/fs/attachments.ts).
 - [x] T079 Implement resume journal handling (src/fs/resumeJournal.ts).
-- [x] T080 Implement slug collision resolver (src/fs/slugCollision.ts) (uses slugify + suffix logic).
+- [x] T080 Implement slug collision resolver (src/fs/slugCollision.ts) (uses slug generation + suffix logic).
 
 ### Services / Orchestration
 - [x] T081 Implement incremental diff service (src/services/incrementalDiff.ts) (compare old/new manifest entries + hashes).
@@ -152,12 +159,12 @@
 - [ ] T112 [P] Update README with usage examples, performance notes, and cleanup features.
 - [ ] T113 [P] Update quickstart with cleanup configuration examples and resume/dry-run clarifications.
 - [ ] T114 [P] Add JSDoc comments to all public cleanup APIs.
-- [ ] T115 Coverage validation (>95% for all modules per constitution including cleanup).
+- [ ] T115 PRIORITY: Coverage validation (>95% for all modules per constitution including cleanup).
 - [ ] T116 Run quickstart.md validation scenarios (including cleanup scenarios).
 - [ ] T117 Memory usage profiling and optimization review (including cleanup impact).
 - [ ] T118 Refactor & de-duplicate transformation utilities (consolidate similar functions in src/transform/, remove unused exports, optimize attachment path resolution per code review findings).
 - [ ] T119 Run lint & fix remaining style issues.
-- [ ] T120 Ensure TypeScript strict mode passes (enable `strict` in tsconfig if not yet) and verify ≥95% line coverage per constitution.
+- [ ] T120 PRIORITY: Ensure TypeScript strict mode passes (enable `strict` in tsconfig if not yet) and verify ≥95% line coverage per constitution.
 - [ ] T121 Final pass: remove TODO markers not deferred intentionally.
 
 ## Dependencies Overview

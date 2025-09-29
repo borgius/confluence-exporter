@@ -106,7 +106,7 @@ export class ExportRunner {
       const transformResults = await this.transformPages(diffResult.pagesToProcess);
       
       await this.updatePhase('writing-files');
-      await this.writeFiles(transformResults, diffResult.attachmentsToProcess);
+      await this.writeFiles(transformResults, diffResult.attachmentsToProcess, diffResult.pagesToProcess);
 
       // Phase 4: Update manifest
       await this.updatePhase('updating-manifest');
@@ -334,48 +334,62 @@ export class ExportRunner {
 
   private async writeFiles(
     transformResults: Map<string, MarkdownTransformResult>,
-    attachments: Attachment[]
+    attachments: Attachment[],
+    pages: Page[]
   ): Promise<void> {
     logger.info('Starting file writing', { 
       markdownFiles: transformResults.size,
       attachments: attachments.length 
     });
     
-    // Write markdown files
+    // Write markdown and HTML files
     const writeMarkdownTasks = Array.from(transformResults.entries()).map(([pageId, result]) =>
       this.limit(async () => {
         try {
-          const page = Array.from(transformResults.keys()).find(id => id === pageId);
+          const page = pages.find(p => p.id === pageId);
           if (!page) return;
 
           const slug = slugify(result.frontMatter.title as string);
-          const filePath = `${this.config.outputDir}/${slug}.md`;
+          const markdownFilePath = `${this.config.outputDir}/${slug}.md`;
+          const htmlFilePath = `${this.config.outputDir}/${slug}.html`;
           
-          logger.info('Writing markdown file', { 
+          logger.info('Writing markdown and HTML files', { 
             pageId, 
             title: result.frontMatter.title,
-            filePath,
+            markdownFilePath,
+            htmlFilePath,
             contentLength: result.content.length
           });
           
+          // Write markdown file
           const frontMatterStr = Object.entries(result.frontMatter)
             .map(([key, value]) => `${key}: ${JSON.stringify(value)}`)
             .join('\n');
           
-          const content = `---\n${frontMatterStr}\n---\n\n${result.content}`;
+          const markdownContent = `---\n${frontMatterStr}\n---\n\n${result.content}`;
+          await atomicWriteFile(markdownFilePath, markdownContent);
           
-          await atomicWriteFile(filePath, content);
+          // Write HTML file (source Confluence storage format)
+          if (page.bodyStorage) {
+            await atomicWriteFile(htmlFilePath, page.bodyStorage);
+            logger.info('HTML file saved successfully', { 
+              pageId, 
+              title: result.frontMatter.title,
+              htmlFilePath,
+              htmlFileSize: page.bodyStorage.length
+            });
+          }
           
           logger.info('Markdown file saved successfully', { 
             pageId, 
             title: result.frontMatter.title,
-            filePath,
-            fileSize: content.length
+            markdownFilePath,
+            markdownFileSize: markdownContent.length
           });
           
         } catch (error) {
-          this.addError('filesystem', pageId, 'Failed to write markdown file', true);
-          logger.error('Failed to write markdown file', {
+          this.addError('filesystem', pageId, 'Failed to write markdown/HTML files', true);
+          logger.error('Failed to write markdown/HTML files', {
             pageId,
             error: error instanceof Error ? error.message : String(error)
           });

@@ -17,5 +17,13 @@ export default [
       'complexity': ['warn', 10],
       'prefer-const': 'warn'
     }
+  },
+  {
+    files: ['src/transform/cleanupRules/**/*.ts', 'src/services/markdownCleanupService.ts'],
+    rules: {
+      // Special rules for cleanup modules
+      'complexity': ['error', 8], // Stricter complexity for cleanup rules
+      '@typescript-eslint/explicit-function-return-type': 'warn'
+    }
   }
 ];
