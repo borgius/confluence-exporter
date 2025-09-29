@@ -1,0 +1,27 @@
+node_modules/
+
+# Build output
+dist/
+
+# Coverage
+coverage/
+
+# Logs
+*.log
+logs/
+
+# OS / Editor
+.DS_Store
+.idea/
+.vscode/
+
+# Env
+.env
+.env.local
+
+# Temp export markers
+*.export-in-progress
+resume.log
+
+# Misc
+.tmp/

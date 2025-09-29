@@ -1,0 +1,42 @@
+{
+  "name": "confluence-exporter",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "CLI + library to export a Confluence space to markdown with preserved structure.",
+  "license": "MIT",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rimraf dist",
+    "lint": "eslint . --ext .ts",
+    "test": "jest --passWithNoTests",
+    "test:watch": "jest --watch",
+    "dev": "nodemon --watch src --ext ts --exec node --loader ts-node/esm src/cli/index.ts",
+    "prepare": "npm run build",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "axios": "^1.12.2",
+    "commander": "^14.0.1",
+    "gray-matter": "^4.0.3",
+    "p-limit": "^7.1.1",
+    "winston": "^3.17.0"
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.44.1",
+    "@typescript-eslint/parser": "^8.44.1",
+    "eslint": "^9.36.0",
+    "jest": "^30.2.0",
+    "nock": "^14.0.10",
+    "nodemon": "^3.1.10",
+    "rimraf": "^6.0.1",
+    "ts-jest": "^29.4.4",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.2",
+    "typescript-eslint": "^8.44.1"
+  }
+}
