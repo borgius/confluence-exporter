@@ -2,7 +2,7 @@
 
 exports[`CLI Help Output Main Help Output should display main help with all commands and options: main-help-output 1`] = `
 "  [2mconsole.log[22m
-    [dotenv@17.2.2] injecting env (5) from .env -- tip: 📡 auto-backup env with Radar: https://dotenvx.com/radar
+    [dotenv@17.2.2] injecting env (5) from .env -- tip: 🔐 prevent building .env in docker: https://dotenvx.com/prebuild
 [2m[22m
 [2m      [2mat _log ([22m[2mnode_modules/dotenv/lib/main.js[2m:139:11)[22m[2m[22m
 

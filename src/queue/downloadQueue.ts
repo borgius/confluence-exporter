@@ -1,6 +1,11 @@
 /**
- * T087: Main download queue orchestrator
- * Implements FR-033, FR-036, FR-037 for FIFO processing and deduplication
+ * @fileoverview Download queue orchestrator for dynamic content discovery and processing.
+ * 
+ * Implements a comprehensive queue system for handling dynamic content discovery
+ * during Confluence exports. Supports FIFO processing, persistence, deduplication,
+ * recovery, and performance monitoring.
+ * 
+ * Satisfies requirements FR-033, FR-036, FR-037 for queue-based processing.
  */
 
 import type { 
@@ -17,27 +22,75 @@ import { QueueDiscoveryService } from './queueDiscovery.js';
 import { QueueRecoveryService } from './queueRecovery.js';
 import { validateQueueItemQuick } from './queueValidation.js';
 
+/**
+ * Configuration options for download queue behavior and performance tuning.
+ */
 export interface DownloadQueueConfig {
+  /** Maximum number of items allowed in queue before blocking new additions */
   maxQueueSize: number;
+  /** Maximum retry attempts for failed items before permanent failure */
   maxRetries: number;
+  /** Number of operations before triggering automatic persistence */
   persistenceThreshold: number;
+  /** File system path for queue state persistence */
   persistencePath: string;
+  /** Time window in seconds for metrics calculation */
   metricsWindowSeconds: number;
+  /** Enable detection and prevention of circular reference loops */
   enableCircularReferenceDetection: boolean;
+  /** Enable automatic recovery from corruption and errors */
   autoRecoveryEnabled: boolean;
 }
 
+/**
+ * Snapshot of current queue state for monitoring and debugging.
+ */
 export interface QueueStateInfo {
+  /** Total number of items ever added to queue */
   totalItems: number;
+  /** Items waiting to be processed */
   pendingItems: number;
+  /** Items currently being processed */
   processingItems: number;
+  /** Successfully completed items */
   completedItems: number;
+  /** Permanently failed items */
   failedItems: number;
+  /** Processing order of pending items (page IDs) */
   processingOrder: string[];
+  /** List of all pages that have been processed */
   processedPages: string[];
+  /** Timestamp of last persistence operation */
   lastPersistenceTime?: string;
 }
 
+/**
+ * Main orchestrator for queue-based content discovery and processing.
+ * 
+ * Provides comprehensive queue management including:
+ * - FIFO processing order with deduplication
+ * - Automatic persistence and recovery
+ * - Performance metrics and monitoring
+ * - Error handling with configurable retry logic
+ * - Circular reference detection
+ * 
+ * @example
+ * ```typescript
+ * const queue = new DownloadQueueOrchestrator('MYSPACE', outputDir, {
+ *   maxQueueSize: 10000,
+ *   maxRetries: 3,
+ *   persistenceThreshold: 100
+ * });
+ * 
+ * await queue.addItem({
+ *   pageId: '123',
+ *   source: 'macro-expansion',
+ *   priority: 1
+ * });
+ * 
+ * const item = await queue.getNextItem();
+ * ```
+ */
 export class DownloadQueueOrchestrator implements IDownloadQueue {
   private queue: DownloadQueue;
   private readonly persistence: QueuePersistenceService;
@@ -47,6 +100,13 @@ export class DownloadQueueOrchestrator implements IDownloadQueue {
   private readonly config: DownloadQueueConfig;
   private readonly spaceKey: string;
 
+  /**
+   * Creates a new download queue orchestrator for the specified Confluence space.
+   * 
+   * @param spaceKey - Confluence space key for queue identification and isolation
+   * @param config - Optional configuration overrides for queue behavior
+   * @param workspaceDir - Base directory for queue persistence files
+   */
   constructor(
     spaceKey: string,
     config: Partial<DownloadQueueConfig> = {},
@@ -74,7 +134,13 @@ export class DownloadQueueOrchestrator implements IDownloadQueue {
   }
 
   /**
-   * Add items to the queue with deduplication.
+   * Adds one or more items to the queue with automatic deduplication.
+   * 
+   * Validates items before adding and enforces queue size limits.
+   * Duplicate items (same pageId) are automatically filtered out.
+   * 
+   * @param items - Single queue item or array of items to add
+   * @throws {Error} If items fail validation or queue capacity is exceeded
    */
   async add(items: QueueItem | QueueItem[]): Promise<void> {
     const itemArray = Array.isArray(items) ? items : [items];
@@ -116,7 +182,12 @@ export class DownloadQueueOrchestrator implements IDownloadQueue {
   }
 
   /**
-   * Get the next item to process (FIFO).
+   * Retrieves the next item from the queue for processing in FIFO order.
+   * 
+   * Automatically skips orphaned entries and updates item status to 'processing'.
+   * Returns null if no pending items are available.
+   * 
+   * @returns Promise resolving to next queue item or null if queue is empty
    */
   async next(): Promise<QueueItem | null> {
     // Find next pending item in processing order

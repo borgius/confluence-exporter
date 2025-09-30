@@ -1,6 +1,11 @@
 /**
- * T098: Enhanced markdown transformer with cleanup integration and queue discovery
- * Implements FR-035 for comprehensive markdown processing with queue population
+ * @fileoverview Enhanced markdown transformer with cleanup and queue discovery.
+ * 
+ * Extends basic markdown transformation with content cleanup and dynamic
+ * discovery of additional pages through macro expansion and link analysis.
+ * Supports queue-based processing for comprehensive content export.
+ * 
+ * Implements FR-035 for comprehensive markdown processing with queue population.
  */
 
 import type { Page } from '../models/entities.js';
@@ -13,45 +18,102 @@ import { MacroDiscovery, type MacroDiscoveryConfig, type MacroDiscoveryResult } 
 import { UserDiscovery, type UserDiscoveryConfig, type UserDiscoveryResult } from './userDiscovery.js';
 import { logger } from '../util/logger.js';
 
-// Interface for the base transformer to avoid importing the class
+/**
+ * Interface for the base transformer to avoid importing the class.
+ */
 export interface IMarkdownTransformer {
   transform(page: Page, context: TransformContext): Promise<MarkdownTransformResult>;
 }
 
+/**
+ * Enhanced transformation result including cleanup and discovery data.
+ */
 export interface EnhancedTransformResult extends MarkdownTransformResult {
+  /** Optional cleanup processing result if cleanup was enabled */
   cleanupResult?: CleanupServiceResult;
+  /** Discovery results for queue population */
   discoveryResult: QueueDiscoveryResult;
+  /** Performance metrics for the transformation process */
   metrics: EnhancedTransformMetrics;
 }
 
+/**
+ * Results of queue discovery analysis including all discovered content.
+ */
 export interface QueueDiscoveryResult {
+  /** Queue items ready for processing */
   queueItems: QueueItem[];
+  /** Link discovery analysis results */
   linkDiscovery: LinkDiscoveryResult;
+  /** Macro expansion discovery results */
   macroDiscovery: MacroDiscoveryResult;
+  /** User reference discovery results */
   userDiscovery: UserDiscoveryResult;
+  /** Total number of items discovered across all sources */
   totalItemsDiscovered: number;
 }
 
+/**
+ * Performance metrics for enhanced transformation process.
+ */
 export interface EnhancedTransformMetrics {
+  /** Time spent on base markdown transformation */
   transformTimeMs: number;
+  /** Time spent on cleanup processing (if enabled) */
   cleanupTimeMs?: number;
+  /** Time spent on discovery analysis */
   discoveryTimeMs: number;
+  /** Total processing time including all phases */
   totalProcessingTimeMs: number;
+  /** Content size before processing */
   contentSizeBefore: number;
+  /** Content size after processing */
   contentSizeAfter: number;
 }
 
+/**
+ * Configuration for enhanced transformation features.
+ */
 export interface EnhancedTransformConfig {
+  /** Cleanup service configuration */
   cleanup: Partial<CleanupServiceConfig>;
+  /** Link discovery configuration */
   linkDiscovery: Partial<LinkDiscoveryConfig>;
+  /** Macro discovery configuration */
   macroDiscovery: Partial<MacroDiscoveryConfig>;
+  /** User discovery configuration */
   userDiscovery: Partial<UserDiscoveryConfig>;
+  /** Enable content cleanup processing */
   enableCleanup: boolean;
+  /** Enable queue discovery for dynamic content */
   enableQueueDiscovery: boolean;
+  /** Fail transformation if cleanup encounters errors */
   failOnCleanupError: boolean;
+  /** Fail transformation if discovery encounters errors */
   failOnDiscoveryError: boolean;
 }
 
+/**
+ * Enhanced markdown transformer that extends basic transformation with:
+ * - Content cleanup and typography enhancement
+ * - Dynamic content discovery for queue processing
+ * - Performance monitoring and error handling
+ * 
+ * Wraps a base transformer and adds comprehensive post-processing capabilities
+ * for high-quality markdown output and dynamic content exploration.
+ * 
+ * @example
+ * ```typescript
+ * const enhanced = new EnhancedMarkdownTransformer(baseTransformer, {
+ *   enableCleanup: true,
+ *   enableQueueDiscovery: true,
+ *   cleanup: { intensity: 'medium' }
+ * });
+ * 
+ * const result = await enhanced.transform(page, context);
+ * console.log(`Discovered ${result.discoveryResult.totalItemsDiscovered} new items`);
+ * ```
+ */
 export class EnhancedMarkdownTransformer {
   private readonly baseTransformer: IMarkdownTransformer;
   private readonly cleanupService?: MarkdownCleanupService;
@@ -60,6 +122,12 @@ export class EnhancedMarkdownTransformer {
   private userDiscovery?: UserDiscovery;
   private readonly config: EnhancedTransformConfig;
 
+  /**
+   * Creates a new enhanced transformer with the specified base transformer and configuration.
+   * 
+   * @param baseTransformer - Base markdown transformer to extend
+   * @param config - Optional configuration for enhanced features
+   */
   constructor(
     baseTransformer: IMarkdownTransformer,
     config: Partial<EnhancedTransformConfig> = {}

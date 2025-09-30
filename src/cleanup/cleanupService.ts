@@ -1,7 +1,9 @@
 /**
- * Cleanup service orchestrator implementation.
- * Coordinates rule execution with partial failure handling and performance tracking.
- * Enhanced with performance monitoring for T133.
+ * @fileoverview Markdown cleanup service for post-processing exported content.
+ * 
+ * Provides comprehensive content cleanup including typography enhancement,
+ * whitespace normalization, and formatting consistency. Supports partial
+ * failure handling and performance monitoring.
  */
 
 import type { 
@@ -19,21 +21,51 @@ import type { PerformanceCollector } from '../core/performanceCollector.js';
 import { logger } from '../util/logger.js';
 import { validateConfig as validateCleanupConfig } from './configManager.js';
 
+/**
+ * Main cleanup service that orchestrates markdown content post-processing.
+ * 
+ * Provides comprehensive cleanup capabilities including:
+ * - Typography enhancement (smart quotes, dashes, ellipses)
+ * - Whitespace normalization and formatting consistency
+ * - Performance monitoring and error handling
+ * - Partial failure recovery for robust processing
+ * 
+ * @example
+ * ```typescript
+ * const service = new MarkdownCleanupService(performanceCollector);
+ * const result = await service.process(document, {
+ *   enabled: true,
+ *   intensity: 'medium',
+ *   rules: ['typography', 'whitespace']
+ * });
+ * ```
+ */
 export class MarkdownCleanupService implements ICleanupService {
   private readonly availableRules: Map<string, ICleanupRule> = new Map();
   private readonly maxCriticalErrors: number = 3;
   private readonly maxWarnings: number = 10;
   private readonly performanceCollector?: PerformanceCollector;
 
+  /**
+   * Creates a new cleanup service instance with optional performance monitoring.
+   * 
+   * @param performanceCollector - Optional collector for tracking cleanup performance metrics
+   */
   constructor(performanceCollector?: PerformanceCollector) {
     this.performanceCollector = performanceCollector;
     this.initializeRules();
   }
 
   /**
-   * Process markdown document with cleanup rules.
-   * Implements partial cleanup strategy with error handling.
-   * Enhanced with structured logging for T134.
+   * Processes a markdown document with the specified cleanup configuration.
+   * 
+   * Applies cleanup rules in priority order with robust error handling.
+   * Supports partial failure recovery - if some rules fail, others continue processing.
+   * 
+   * @param document - Markdown document to process including content and metadata
+   * @param config - Cleanup configuration specifying rules, intensity, and options
+   * @returns Promise resolving to cleanup result with applied rules, errors, and performance data
+   * @throws {Error} If configuration validation fails or critical errors exceed threshold
    */
   async process(document: MarkdownDocument, config: CleanupConfig): Promise<OldCleanupResult> {
     const startTime = Date.now();

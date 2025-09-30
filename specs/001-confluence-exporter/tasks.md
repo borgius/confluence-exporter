@@ -205,16 +205,16 @@
 - [x] T140 Implement structured error classification including queue errors (src/core/errorClassifier.ts) (network vs content vs permission vs cleanup vs queue). [COMPLETED ✓]
 
 ## Phase 3.5: Polish & Validation
-- [ ] T141 [P] Add additional unit tests for error utilities (tests/unit/errors.test.ts).
-- [ ] T142 [P] Add unit tests for resume journal logic (tests/unit/resume_journal.test.ts).
-- [ ] T143 [P] Add unit tests for manifest diff edge cases (deleted pages) (tests/unit/manifest_diff_deleted.test.ts).
-- [ ] T144 [P] Add CLI help output snapshot test (tests/unit/cli_help.test.ts).
-- [ ] T145 [P] Add performance test harness script for cleanup benchmarks (tests/integration/perf_harness.test.ts) (may be skipped by default).
-- [ ] T146 [P] Add unit tests for queue edge cases (empty queue, corruption scenarios) (tests/unit/queue_edge_cases.test.ts).
-- [ ] T147 [P] Add integration tests for queue performance under load (tests/integration/queue_performance_load.test.ts).
+- [x] T141 [P] Add additional unit tests for error utilities (tests/unit/errors.test.ts).
+- [x] T142 [P] Add unit tests for resume journal logic (tests/unit/resume_journal.test.ts).
+- [x] T143 [P] Add unit tests for manifest diff edge cases (deleted pages) (tests/unit/manifest_diff_deleted.test.ts).
+- [x] T144 [P] Add CLI help output snapshot test (tests/unit/cli_help.test.ts).
+- [x] T145 [P] Add performance test harness script for cleanup benchmarks (tests/integration/perf_harness.test.ts) (may be skipped by default).
+- [x] T146 [P] Add unit tests for queue edge cases (empty queue, corruption scenarios) (tests/unit/queue_edge_cases.test.ts).
+- [x] T147 [P] Add integration tests for queue performance under load (tests/integration/queue_performance_load.test.ts).
 - [ ] T148 [P] Performance benchmarking suite for various document sizes.
-- [ ] T149 [P] Update README with usage examples, performance notes, cleanup features, and queue functionality.
-- [ ] T150 [P] Update quickstart with cleanup configuration examples, queue monitoring, and resume/dry-run clarifications.
+- [x] T149 [P] Update README with usage examples, performance notes, cleanup features, and queue functionality.
+- [x] T150 [P] Update quickstart with cleanup configuration examples, queue monitoring, and resume/dry-run clarifications.
 - [ ] T151 [P] Add JSDoc comments to all public cleanup APIs and queue interfaces.
 - [x] T152 PRIORITY: Coverage validation (>95% for all modules per constitution including cleanup and queue). ❌ BLOCKED - Current coverage: 18.96% (463/2441 statements) - many placeholder tests need implementation
 - [ ] T153 Run quickstart.md validation scenarios (including cleanup and queue scenarios).
@@ -222,7 +222,7 @@
 - [ ] T155 Refactor & de-duplicate transformation utilities (consolidate similar functions in src/transform/, remove unused exports, optimize attachment path resolution per code review findings).
 - [x] T156 Run lint & fix remaining style issues. ✅ COMPLETED - All 5 lint warnings resolved
 - [x] T157 PRIORITY: Ensure TypeScript strict mode passes (enable `strict` in tsconfig if not yet) and verify ≥95% line coverage per constitution. ❌ BLOCKED - 23 strict mode errors identified requiring extensive refactoring
-- [ ] T158 Final pass: remove TODO markers not deferred intentionally.
+- [x] T158 Final pass: remove TODO markers not deferred intentionally.
 
 ## Dependencies Overview
 - Setup (T001–T011) precedes all.

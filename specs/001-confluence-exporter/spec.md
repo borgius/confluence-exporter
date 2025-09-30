@@ -89,15 +89,23 @@ As a developer or knowledge engineer, I want to fetch all pages from a given Con
 - **FR-031**: System MUST implement partial cleanup strategy where individual cleanup rules can fail independently without affecting successful rule application
 - **FR-032**: System MUST allow users to disable cleanup entirely via CLI flag for debugging or compatibility purposes
 
-### Global Download Queue Requirements
-- **FR-033**: System MUST implement a global download queue that tracks all pages requiring processing, including initial space pages, dynamically discovered pages from macros (e.g., list-children), user references, and any other page dependencies encountered during transformation.
-- **FR-034**: System MUST persist the download queue to disk after each modification (add/remove operations) to enable recovery from interruptions and maintain queue state across resume operations.
-- **FR-035**: System MUST automatically add discovered page references to the download queue when encountered during content transformation, including but not limited to: user mentions, list-children macro references, inline page links, and embedded page content.
-- **FR-036**: System MUST process the download queue in a breadth-first manner, ensuring that all referenced pages are eventually downloaded and processed, potentially discovering additional pages that extend the queue.
-- **FR-037**: System MUST prevent infinite loops by tracking already-processed page IDs and skipping duplicate queue entries, while allowing re-queuing of pages that failed to download on previous attempts.
-- **FR-038**: System MUST store queue state in a structured format (JSON or similar) alongside the export manifest, including page IDs, queue timestamps, retry counts, and processing status for each queued item.
-- **FR-039**: System MUST handle queue persistence failures gracefully by continuing processing while logging warnings, ensuring that export progress is not blocked by temporary I/O issues.
-- **FR-040**: System MUST provide queue statistics in progress reporting, including total queued pages, processed pages, failed pages, and newly discovered pages during the current export run.
+### Queue Architecture Requirements (Two-Queue Model)
+The system now distinguishes two coordinated queues:
+1. PageDownloadQueue: Responsible for scheduling and fetching the minimal required raw page + attachment metadata from Confluence (and any lightweight index data). Items enter here via initial space traversal and dynamic discovery.
+2. PageProcessingQueue: Responsible for enrichment, additional API fetches (e.g., expanded bodies, attachments), link discovery, transformation to Markdown, cleanup, and final persistence to disk.
+
+- **FR-033**: System MUST implement two distinct persistent queues: PageDownloadQueue (raw fetch) and PageProcessingQueue (post-fetch enrichment + transformation). No page may be transformed or written until it has successfully transitioned from the download queue to the processing queue.
+- **FR-034**: System MUST persist BOTH queues atomically after each structural mutation (enqueue, dequeue, status change) so that after interruption all pending and in-progress items for each lifecycle stage can be recovered without duplication.
+- **FR-035**: System MUST automatically enqueue newly discovered pages (macros, user mentions, inline links, embedded content) into the PageDownloadQueue during processing; discovery MUST NOT insert directly into the processing queue.
+- **FR-036**: System MUST process the PageDownloadQueue in breadth-first order; upon successful raw fetch of a page's base metadata/content stub it MUST enqueue a corresponding item into the PageProcessingQueue (status transition recorded) while marking the original download entry completed.
+- **FR-037**: System MUST prevent infinite loops across both queues by maintaining a unified processed/seen page ID registry; failed pages MAY be re-queued (with incremented retry count) into the appropriate queue stage they failed in, respecting retry/backoff constraints.
+- **FR-038**: System MUST persist queue state in structured JSON including (for each item): pageId, queueType (download|processing), discoverySource (initial|macro|reference|retry), discoveryTimestamp, retries, status (pending|in-progress|completed|failed), lastTransitionTimestamp, and (if processing queue) contentHash (post-transformation) and outputPath once written.
+- **FR-039**: System MUST handle persistence write failures for either queue gracefully by logging a warning and retaining in-memory state, retrying persistence opportunistically; a detected on-disk corruption MUST trigger recovery that merges intact records and avoids data loss (ties into corruption detection/recovery tasks referenced earlier T137/T085).
+- **FR-040**: System MUST emit per-queue and cross-queue metrics: downloadQueue { pending, inProgress, completed, failed, discoveredThisRun }, processingQueue { pending, inProgress, completed, failed }, plus avgTransitionLatency (discovery → written) and cumulative newlyDiscovered count; these feed progress logging and final manifest stats.
+
+### Queue Control & Interrupt Handling
+- **FR-041**: The `--limit <N>` CLI option MUST cap only the initial seeding size of the PageDownloadQueue (first wave of root/space pages). Dynamically discovered pages (links, macros, mentions) MUST still be enqueued beyond this limit. The limit MUST NOT directly constrain the PageProcessingQueue.
+- **FR-042**: On first SIGINT (Ctrl-C) the system MUST: (a) stop accepting new items into the PageDownloadQueue (freeze seeding & discovery enqueue operations), (b) allow the PageProcessingQueue to continue draining in-flight pages to persist already downloaded content, and (c) log a structured message indicating "graceful shutdown phase 1". On second SIGINT before draining completes, the system MUST immediately persist current state of both queues and manifest (atomic writes) and exit with a specific interrupt exit code while marking any still-pending items as 'aborted'.
 
 ### Non-Functional / Quality Constraints
 - **NFR-001**: Export of a medium space (300-700 pages, light attachments) MUST complete within 10 minutes with standard network conditions (baseline target for performance validation).
@@ -106,6 +114,15 @@ As a developer or knowledge engineer, I want to fetch all pages from a given Con
 - **NFR-004**: Logs MUST be structured as line-delimited JSON with required fields: level, timestamp, message, context.
 - **NFR-005**: Tool MUST be usable in CI environments (non-interactive). Authentication MUST use HTTP Basic Auth with a Confluence username and password provided via environment variables (e.g., `CONFLUENCE_USERNAME`, `CONFLUENCE_PASSWORD`) or CLI flags; credentials MUST be encoded as `Authorization: Basic <base64(username:password)>` without interactive prompts when running headless.
 - **NFR-006**: Markdown cleanup processing MUST complete within 1 second per individual markdown file to support interactive workflows and maintain overall export performance
+
+### Architecture Note: Two-Queue Workflow
+The export lifecycle is explicitly split into two queues to improve resilience, parallelism, and clarity of failure handling:
+1. PageDownloadQueue: Seeds from the initial space tree plus dynamic discoveries; performs lightweight fetch (page metadata + minimal body or expansion required to qualify existence) and stores raw content/attachment references.
+2. PageProcessingQueue: Accepts only successfully downloaded pages; performs enrichment (additional API expansions, attachment downloads), link discovery (adding new pages back into the PageDownloadQueue), transformation to Markdown, cleanup, and final atomic write to disk.
+
+This separation enables: (a) clearer retry semantics (network/raw fetch vs transformation failures), (b) staged persistence for resume, (c) breadth-first exploration that can overlap with deeper processing, and (d) precise metrics for transition latency and bottleneck analysis. The UnifiedPageRegistry prevents duplicate traversal while still allowing failed stages to re-enter at the correct point.
+
+Graceful Interrupt Flow: A first Ctrl-C transitions the system into a quiescing mode: the PageDownloadQueue is frozen (no new seeds or discoveries accepted) while the PageProcessingQueue continues until empty or forcibly aborted. A second Ctrl-C forces an immediate flush of in-memory queue/manifest state to disk and exits. This two-stage termination ensures partial progress is safely captured without risking corruption while still offering fast abort if the user insists.
 
 ### Key Entities
 - **Space**: Logical grouping of pages; attributes: key, name, base URL.
@@ -121,6 +138,10 @@ As a developer or knowledge engineer, I want to fetch all pages from a given Con
 - **DownloadQueue**: Global queue managing pages requiring processing; attributes: queue items, persistence state, statistics.
 - **QueueItem**: Individual queue entry with: page id, source type (initial|macro|reference), discovery timestamp, retry count, processing status, parent page id (optional).
 - **QueuePersistence**: Disk-based queue state management with: file path, serialization format, atomic write operations, recovery mechanisms.
+ - **PageDownloadQueue**: First-stage queue containing pages awaiting raw fetch; minimal metadata until fetch completes.
+ - **PageProcessingQueue**: Second-stage queue containing pages whose raw fetch succeeded and now require enrichment, link analysis, transformation, cleanup, and write.
+ - **QueueTransition**: Conceptual lifecycle record capturing movement from download to processing (timestamps, latency, retry lineage) for metrics.
+ - **UnifiedPageRegistry**: Deduplicated set of all seen page IDs with state flags (seen, downloaded, processed) leveraged to prevent infinite loops across both queues.
 
 ---
 

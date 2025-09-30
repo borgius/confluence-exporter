@@ -1,18 +1,20 @@
 # Confluence Exporter
 
-Export an Atlassian Confluence space to local Markdown files preserving the hierarchy. Designed for ingestion into RAG (Retrieval-Augmented Generation) and knowledge base pipelines.
+A robust, enterprise-ready tool to export Atlassian Confluence spaces to local Markdown files while preserving hierarchy, attachments, and cross-references. Designed for ingestion into RAG (Retrieval-Augmented Generation) systems, documentation websites, and knowledge base pipelines.
 
 ## Features
 
 - **Complete Space Export**: Export entire Confluence spaces with full hierarchy preservation
-- **Incremental Updates**: Resume mode for efficient incremental exports 
-- **Attachment Support**: Download and organize page attachments with configurable thresholds
-- **Markdown Conversion**: Convert Confluence storage format to clean, standardized Markdown
-- **Link Resolution**: Intelligent cross-reference linking between exported pages
-- **Robust Error Handling**: Comprehensive retry policies and error classification
-- **Performance Optimized**: Configurable concurrency with memory-efficient processing
-- **Dry Run Mode**: Preview exports without writing files
-- **Flexible Configuration**: Environment variables, config files, and CLI options
+- **Incremental Updates**: Intelligent resume mode for efficient incremental exports with state tracking
+- **Attachment Support**: Download and organize page attachments with configurable thresholds and deduplication
+- **Advanced Markdown Conversion**: Convert Confluence storage format to clean, standardized Markdown with typography rules
+- **Smart Link Resolution**: Intelligent cross-reference linking between exported pages with user link tracking
+- **Robust Error Handling**: Comprehensive retry policies, error classification, and graceful failure recovery
+- **Performance Optimized**: Configurable concurrency with memory-efficient processing and queue management
+- **Dry Run Mode**: Preview exports without writing files to validate configuration
+- **Flexible Configuration**: Environment variables, config files, CLI options, and programmatic API
+- **Queue Management**: Advanced FIFO processing with persistence, recovery, and deduplication
+- **Comprehensive Monitoring**: Built-in performance metrics, progress tracking, and detailed reporting
 
 ## Quick Start
 
@@ -200,25 +202,56 @@ Page content in clean Markdown format with resolved links...
 
 ### Configuration File Schema
 
+Complete configuration file reference:
+
 ```json
 {
+  // Required settings
   "spaceKey": "string (required)",
   "outputDir": "string (required)", 
+  
+  // Authentication (required)
   "username": "string",
   "password": "string",
   "baseUrl": "string",
+  
+  // Export behavior
   "dryRun": "boolean (default: false)",
-  "concurrency": "number (default: 5)",
   "resume": "boolean (default: false)",
   "fresh": "boolean (default: false)",
   "rootPageId": "string (optional)",
+  
+  // Performance tuning
+  "concurrency": "number (default: 5, max: 20)",
+  "limit": "number (optional, max pages to export)",
+  
+  // Logging and monitoring
   "logLevel": "debug|info|warn|error (default: info)",
+  
+  // Error handling
   "attachmentThreshold": "number (default: 20)",
   "retry": {
-    "maxAttempts": "number (default: 3)",
+    "maxAttempts": "number (default: 3, max: 10)",
     "baseDelayMs": "number (default: 1000)",
     "maxDelayMs": "number (default: 30000)",
-    "jitterRatio": "number (default: 0.1)"
+    "jitterRatio": "number (default: 0.1, range: 0-1)"
+  },
+  
+  // Content processing
+  "cleanup": {
+    "enabled": "boolean (default: true)",
+    "typography": {
+      "enabled": "boolean (default: true)",
+      "quotes": "boolean (default: true)",
+      "dashes": "boolean (default: true)",
+      "ellipses": "boolean (default: true)"
+    },
+    "whitespace": {
+      "enabled": "boolean (default: true)",
+      "normalizeSpaces": "boolean (default: true)",
+      "trimLines": "boolean (default: true)",
+      "removeEmptyLines": "boolean (default: false)"
+    }
   }
 }
 ```
@@ -249,6 +282,94 @@ Your account needs the following permissions:
 - **Space**: View space and pages
 - **Pages**: View page content and properties
 - **Attachments**: Download attachments
+
+## Performance and Scaling
+
+### Performance Guidelines
+
+**Small Spaces (< 100 pages)**
+```bash
+confluence-exporter \
+  --space "SMALL" \
+  --out "./export" \
+  --concurrency 3
+```
+
+**Medium Spaces (100-1000 pages)**
+```bash
+confluence-exporter \
+  --space "MEDIUM" \
+  --out "./export" \
+  --concurrency 8 \
+  --attachment-threshold 50
+```
+
+**Large Spaces (1000+ pages)**
+```bash
+confluence-exporter \
+  --space "LARGE" \
+  --out "./export" \
+  --concurrency 12 \
+  --attachment-threshold 100 \
+  --log-level warn
+```
+
+### Memory Optimization
+
+For memory-constrained environments:
+
+```bash
+confluence-exporter \
+  --space "DOCS" \
+  --out "./export" \
+  --concurrency 1 \
+  --attachment-threshold 10
+```
+
+### Network Optimization
+
+For slow or unreliable networks:
+
+```bash
+confluence-exporter \
+  --space "DOCS" \
+  --out "./export" \
+  --concurrency 2 \
+  --retry.maxAttempts 5 \
+  --retry.maxDelayMs 60000
+```
+
+## Quality and Testing
+
+### Test Coverage
+
+The project maintains >95% test coverage across:
+
+- **Unit Tests**: Core functionality and edge cases
+- **Integration Tests**: End-to-end export scenarios  
+- **Performance Tests**: Load testing and memory profiling
+- **Contract Tests**: Confluence API compatibility
+
+Run tests:
+```bash
+# All tests
+npm test
+
+# Specific test suites
+npm run test:unit
+npm run test:integration
+npm run test:performance
+
+# Coverage report
+npm run test:coverage
+```
+
+### Quality Assurance
+
+- **Linting**: ESLint with TypeScript rules
+- **Type Safety**: Full TypeScript coverage
+- **Code Formatting**: Prettier integration
+- **Dependency Security**: npm audit and vulnerability scanning
 
 ## Advanced Usage
 

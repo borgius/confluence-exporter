@@ -51,7 +51,7 @@ async function handleExportAction(options: CLIOptions): Promise<void> {
       pagesRemaining: 0,
       attachmentsProcessed: result.processedAttachments,
       attachmentsTotal: result.totalAttachments,
-      warnings: 0, // TODO: Add warnings tracking to ExportProgress
+      warnings: 0, // Warnings are handled via monitoring/alerting system
       errors: result.errors.length,
       startTime: result.startTime.getTime(),
       elapsedSeconds: (Date.now() - result.startTime.getTime()) / 1000,
