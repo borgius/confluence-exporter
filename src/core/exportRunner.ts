@@ -1,9 +1,12 @@
 import type { ExportConfig, Page, Attachment, Space, ManifestEntry } from '../models/entities.js';
 import type { IncrementalDiffResult } from '../services/incrementalDiff.js';
-import type { MarkdownTransformResult } from '../transform/index.js';
+import type { MarkdownTransformResult, TransformContext } from '../transform/index.js';
 
 import { ConfluenceApi } from '../confluence/index.js';
 import { EnhancedMarkdownTransformer } from '../transform/enhancedMarkdownTransformer.js';
+import { MarkdownTransformer } from '../transform/markdownTransformer.js';
+import { MarkdownCleanupService } from '../cleanup/cleanupService.js';
+import { type DownloadQueueOrchestrator, createStandardQueue } from '../queue/index.js';
 import { 
   loadManifest, 
   saveManifest, 
@@ -41,10 +44,13 @@ export type ExportPhase =
   | 'fetching-pages'
   | 'fetching-attachments'
   | 'computing-diff'
+  | 'initializing-queue'
+  | 'processing-queue'
   | 'transforming'
   | 'writing-files'
   | 'updating-manifest'
   | 'finalizing-links'
+  | 'post-processing-cleanup'
   | 'completed'
   | 'failed';
 
@@ -52,6 +58,8 @@ export class ExportRunner {
   private api: ConfluenceApi;
   private config: ExportConfig;
   private transformer: EnhancedMarkdownTransformer;
+  private cleanupService: MarkdownCleanupService;
+  private downloadQueue?: DownloadQueueOrchestrator;
   private progress: ExportProgress;
   private limit: ReturnType<typeof pLimit>;
 
@@ -63,7 +71,29 @@ export class ExportRunner {
       password: config.password,
       retry: config.retry
     });
-    this.transformer = new EnhancedMarkdownTransformer();
+    
+    // Create async wrapper for base transformer
+    const baseTransformer = new MarkdownTransformer();
+    const asyncTransformer = {
+      async transform(page: Page, context: TransformContext): Promise<MarkdownTransformResult> {
+        return baseTransformer.transform(page, context);
+      }
+    };
+    
+    this.transformer = new EnhancedMarkdownTransformer(asyncTransformer, {
+      enableCleanup: true,
+      enableQueueDiscovery: true, // Enable queue discovery when using queue mode
+    });
+    
+    // Initialize cleanup service for post-processing
+    this.cleanupService = new MarkdownCleanupService();
+    
+    // Initialize queue if queue mode is enabled
+    const configWithQueue = this.config as ExportConfig & { enableQueue?: boolean };
+    if (configWithQueue.enableQueue) {
+      this.downloadQueue = createStandardQueue(this.config.spaceKey, this.config.outputDir);
+    }
+    
     this.limit = pLimit(config.concurrency || 5);
     
     this.progress = {
@@ -84,7 +114,8 @@ export class ExportRunner {
     try {
       logger.info('Starting export', { 
         spaceKey: this.config.spaceKey,
-        outputDir: this.config.outputDir 
+        outputDir: this.config.outputDir,
+        queueMode: !!this.downloadQueue
       });
 
       // Phase 1: Fetch space and pages
@@ -101,27 +132,21 @@ export class ExportRunner {
       await this.updatePhase('computing-diff');
       const diffResult = await this.computeDiff(pages, attachments);
 
-      // Phase 3: Transform and write
-      await this.updatePhase('transforming');
-      const transformResults = await this.transformPages(diffResult.pagesToProcess);
-      
-      await this.updatePhase('writing-files');
-      await this.writeFiles(transformResults, diffResult.attachmentsToProcess, diffResult.pagesToProcess);
+      // Decide between queue-based and traditional processing
+      if (this.downloadQueue) {
+        await this.runQueueBasedProcessing(diffResult);
+      } else {
+        await this.runTraditionalProcessing(diffResult);
+      }
 
-      // Phase 4: Update manifest
-      await this.updatePhase('updating-manifest');
-      await this.updateManifest(diffResult, transformResults);
-
-      // Phase 5: Finalize links
-      await this.updatePhase('finalizing-links');
-      await this.finalizeLinks(transformResults);
-
+      // Final phases (common to both modes)
       await this.updatePhase('completed');
       
       logger.info('Export completed successfully', {
         processedPages: this.progress.processedPages,
         processedAttachments: this.progress.processedAttachments,
-        errors: this.progress.errors.length
+        errors: this.progress.errors.length,
+        queueMode: !!this.downloadQueue
       });
 
       return this.progress;
@@ -292,11 +317,10 @@ export class ExportRunner {
             bodyLength: page.bodyStorage?.length || 0
           });
           
-          const result = await this.transformer.transformWithEnhancements(page, {
+          const result = await this.transformer.transform(page, {
             currentPageId: page.id,
             spaceKey: this.config.spaceKey,
-            baseUrl: this.config.baseUrl,
-            api: this.api
+            baseUrl: this.config.baseUrl
           });
           
           results.set(page.id, result);
@@ -496,5 +520,378 @@ export class ExportRunner {
       timestamp: new Date(),
       retryable
     });
+  }
+
+  /**
+   * Performs post-processing cleanup on all exported markdown files
+   */
+  private async performPostProcessingCleanup(transformResults: Map<string, MarkdownTransformResult>): Promise<void> {
+    // Enable cleanup by default, allow override in config
+    const configWithCleanup = this.config as ExportConfig & { enableCleanup?: boolean };
+    const enableCleanup = configWithCleanup.enableCleanup ?? true;
+    
+    if (!enableCleanup) {
+      logger.info('Post-processing cleanup disabled');
+      return;
+    }
+
+    logger.info('Starting post-processing cleanup', {
+      totalFiles: transformResults.size,
+      outputDir: this.config.outputDir
+    });
+
+    const cleanupTasks = Array.from(transformResults.entries()).map(([pageId, result]) =>
+      this.limit(async () => {
+        try {
+          // Generate file path
+          const slug = slugify(result.frontMatter.title as string);
+          const markdownFilePath = `${this.config.outputDir}/${slug}.md`;
+          
+          // Read current file content
+          const currentContent = await this.readFileContent(markdownFilePath);
+          if (!currentContent) {
+            logger.warn('Could not read file for cleanup', { filePath: markdownFilePath });
+            return;
+          }
+
+          // Apply cleanup rules
+          const cleanupResult = await this.cleanupService.process({
+            content: currentContent,
+            filePath: markdownFilePath,
+            sourcePageId: pageId,
+            metadata: {
+              language: 'en',
+              frontmatter: true,
+              hasMath: false,
+              hasCode: false,
+              wordCount: currentContent.split(/\s+/).length,
+              lineCount: currentContent.split('\n').length
+            }
+          }, {
+            enabled: true,
+            intensity: 'medium',
+            rules: [],
+            lineLength: 120,
+            locale: 'en',
+            preserveFormatting: false
+          });
+
+          // Write back if content changed
+          if (cleanupResult.success && cleanupResult.cleanedContent !== currentContent) {
+            await atomicWriteFile(markdownFilePath, cleanupResult.cleanedContent);
+            logger.debug('Post-processing cleanup applied', {
+              pageId,
+              filePath: markdownFilePath,
+              rulesApplied: cleanupResult.appliedRules.length,
+              sizeChange: cleanupResult.cleanedContent.length - currentContent.length
+            });
+          }
+
+        } catch (error) {
+          this.addError('filesystem', pageId, 'Post-processing cleanup failed', false);
+          logger.error('Failed to apply post-processing cleanup', {
+            pageId,
+            error: error instanceof Error ? error.message : String(error)
+          });
+        }
+      })
+    );
+
+    await Promise.all(cleanupTasks);
+    
+    logger.info('Post-processing cleanup completed', {
+      processedFiles: transformResults.size,
+      errors: this.progress.errors.filter(e => e.message.includes('cleanup')).length
+    });
+  }
+
+  /**
+   * Reads file content safely
+   */
+  private async readFileContent(filePath: string): Promise<string | null> {
+    try {
+      const fs = await import('fs/promises');
+      return await fs.readFile(filePath, 'utf-8');
+    } catch (error) {
+      logger.debug('Could not read file', { filePath, error: error instanceof Error ? error.message : String(error) });
+      return null;
+    }
+  }
+
+  /**
+   * Runs traditional sequential processing (legacy mode)
+   */
+  private async runTraditionalProcessing(diffResult: IncrementalDiffResult): Promise<void> {
+    // Phase 3: Transform and write
+    await this.updatePhase('transforming');
+    const transformResults = await this.transformPages(diffResult.pagesToProcess);
+    
+    await this.updatePhase('writing-files');
+    await this.writeFiles(transformResults, diffResult.attachmentsToProcess, diffResult.pagesToProcess);
+
+    // Phase 4: Update manifest
+    await this.updatePhase('updating-manifest');
+    await this.updateManifest(diffResult, transformResults);
+
+    // Phase 5: Finalize links
+    await this.updatePhase('finalizing-links');
+    await this.finalizeLinks(transformResults);
+
+    // Phase 6: Post-processing cleanup
+    await this.updatePhase('post-processing-cleanup');
+    await this.performPostProcessingCleanup(transformResults);
+  }
+
+  /**
+   * Runs queue-based processing with discovery
+   */
+  private async runQueueBasedProcessing(diffResult: IncrementalDiffResult): Promise<void> {
+    if (!this.downloadQueue) {
+      throw new Error('Queue not initialized for queue-based processing');
+    }
+
+    // Phase 3: Initialize queue
+    await this.updatePhase('initializing-queue');
+    await this.initializeQueue(diffResult.pagesToProcess);
+
+    // Phase 4: Process queue with discovery
+    await this.updatePhase('processing-queue');
+    const allTransformResults = await this.processQueueWithDiscovery();
+
+    // Phase 5: Write all files
+    await this.updatePhase('writing-files');
+    await this.writeAllFiles(allTransformResults, diffResult.attachmentsToProcess);
+
+    // Phase 6: Update manifest
+    await this.updatePhase('updating-manifest');
+    await this.updateManifestFromQueue(allTransformResults);
+
+    // Phase 7: Finalize links
+    await this.updatePhase('finalizing-links');
+    await this.finalizeLinks(allTransformResults);
+
+    // Phase 8: Post-processing cleanup
+    await this.updatePhase('post-processing-cleanup');
+    await this.performPostProcessingCleanup(allTransformResults);
+  }
+
+  /**
+   * Initialize queue with initial pages
+   */
+  private async initializeQueue(initialPages: Page[]): Promise<void> {
+    if (!this.downloadQueue) return;
+
+    logger.info('Initializing download queue', { 
+      initialPages: initialPages.length,
+      spaceKey: this.config.spaceKey
+    });
+
+    // Add initial pages to queue
+    for (const page of initialPages) {
+      await this.downloadQueue.add({
+        pageId: page.id,
+        sourceType: 'initial',
+        discoveryTimestamp: Date.now(),
+        retryCount: 0,
+        status: 'pending'
+      });
+    }
+
+    // Persist initial queue state
+    await this.downloadQueue.persist();
+
+    logger.info('Queue initialized', {
+      queueSize: this.downloadQueue.size(),
+      state: this.downloadQueue.getState()
+    });
+  }
+
+  /**
+   * Process queue with discovery loop
+   */
+  private async processQueueWithDiscovery(): Promise<Map<string, MarkdownTransformResult>> {
+    if (!this.downloadQueue) {
+      throw new Error('Queue not initialized');
+    }
+
+    const allResults = new Map<string, MarkdownTransformResult>();
+    let discoveryPhase = 1;
+    const maxDiscoveryPhases = 10; // Prevent infinite loops
+
+    while (!this.downloadQueue.isEmpty() && discoveryPhase <= maxDiscoveryPhases) {
+      logger.info(`Starting discovery phase ${discoveryPhase}`, {
+        queueSize: this.downloadQueue.size(),
+        processedSoFar: allResults.size
+      });
+
+      // Process current queue items
+      const phaseResults = await this.processCurrentQueueItems();
+      
+      // Merge results
+      for (const [pageId, result] of phaseResults) {
+        allResults.set(pageId, result);
+      }
+
+      // Check if new items were discovered and added to queue
+      const currentQueueSize = this.downloadQueue.size();
+      if (currentQueueSize === 0) {
+        logger.info('Queue empty, discovery complete', { 
+          totalPagesProcessed: allResults.size,
+          discoveryPhases: discoveryPhase
+        });
+        break;
+      }
+
+      logger.info(`Discovery phase ${discoveryPhase} complete`, {
+        pagesProcessedInPhase: phaseResults.size,
+        remainingInQueue: currentQueueSize,
+        totalPagesProcessed: allResults.size
+      });
+
+      discoveryPhase++;
+    }
+
+    if (discoveryPhase > maxDiscoveryPhases) {
+      logger.warn('Max discovery phases reached, stopping', {
+        maxPhases: maxDiscoveryPhases,
+        remainingInQueue: this.downloadQueue.size()
+      });
+    }
+
+    return allResults;
+  }
+
+  /**
+   * Process current items in queue
+   */
+  private async processCurrentQueueItems(): Promise<Map<string, MarkdownTransformResult>> {
+    if (!this.downloadQueue) {
+      throw new Error('Queue not initialized');
+    }
+
+    const results = new Map<string, MarkdownTransformResult>();
+    const processingTasks: Promise<void>[] = [];
+
+    // Process items concurrently
+    while (!this.downloadQueue.isEmpty()) {
+      const queueItem = await this.downloadQueue.next();
+      if (!queueItem) break;
+
+      const task = this.limit(async () => {
+        try {
+          // Fetch page if not already fetched
+          const page = await this.api.getPageWithBody(queueItem.pageId);
+          
+          // Transform page
+          const result = await this.transformer.transform(page, {
+            currentPageId: page.id,
+            spaceKey: this.config.spaceKey,
+            baseUrl: this.config.baseUrl
+          });
+
+          // Queue discovery might have added new items to the queue
+          // This happens inside the enhanced transformer
+
+          results.set(page.id, result);
+          this.progress.processedPages++;
+          
+          // Mark as processed in queue
+          if (this.downloadQueue) {
+            await this.downloadQueue.markProcessed(queueItem.pageId);
+          }
+          
+          logger.debug('Queue item processed', {
+            pageId: queueItem.pageId,
+            title: page.title,
+            sourceType: queueItem.sourceType
+          });
+
+        } catch (error) {
+          // Mark as failed in queue
+          if (this.downloadQueue) {
+            await this.downloadQueue.markFailed(queueItem.pageId, error as Error);
+          }
+          this.addError('page', queueItem.pageId, 'Failed to process queue item', true);
+          
+          logger.error('Failed to process queue item', {
+            pageId: queueItem.pageId,
+            sourceType: queueItem.sourceType,
+            error: error instanceof Error ? error.message : String(error)
+          });
+        }
+      });
+
+      processingTasks.push(task);
+    }
+
+    await Promise.all(processingTasks);
+    return results;
+  }
+
+  /**
+   * Write all files from queue processing
+   */
+  private async writeAllFiles(
+    transformResults: Map<string, MarkdownTransformResult>,
+    attachments: Attachment[]
+  ): Promise<void> {
+    // Find pages for the transform results
+    const pageMap = new Map<string, Page>();
+    for (const pageId of transformResults.keys()) {
+      try {
+        const page = await this.api.getPageWithBody(pageId);
+        pageMap.set(pageId, page);
+      } catch (error) {
+        logger.warn('Could not fetch page for writing', { pageId, error: error instanceof Error ? error.message : String(error) });
+      }
+    }
+
+    const pages = Array.from(pageMap.values());
+    await this.writeFiles(transformResults, attachments, pages);
+  }
+
+  /**
+   * Update manifest from queue processing results
+   */
+  private async updateManifestFromQueue(transformResults: Map<string, MarkdownTransformResult>): Promise<void> {
+    // Create a synthetic diff result for manifest update
+    const pageMap = new Map<string, Page>();
+    for (const pageId of transformResults.keys()) {
+      try {
+        const page = await this.api.getPageWithBody(pageId);
+        pageMap.set(pageId, page);
+      } catch (error) {
+        logger.warn('Could not fetch page for manifest', { pageId, error: error instanceof Error ? error.message : String(error) });
+      }
+    }
+
+    const pages = Array.from(pageMap.values());
+    const syntheticDiffResult: IncrementalDiffResult = {
+      manifestDiff: { 
+        added: pages.map(p => ({
+          id: p.id,
+          title: p.title,
+          path: `${slugify(p.title)}.md`,
+          hash: contentHash(p.bodyStorage || ''),
+          status: 'exported' as const,
+          lastModified: new Date().toISOString()
+        })),
+        modified: [],
+        deleted: [],
+        unchanged: []
+      },
+      pagesToProcess: pages,
+      attachmentsToProcess: [],
+      skippedPages: [],
+      summary: {
+        totalPages: pages.length,
+        pagesToUpdate: pages.length,
+        pagesSkipped: 0,
+        totalAttachments: 0,
+        attachmentsToUpdate: 0
+      }
+    };
+
+    await this.updateManifest(syntheticDiffResult, transformResults);
   }
 }

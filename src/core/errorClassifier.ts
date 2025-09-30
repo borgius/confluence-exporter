@@ -1,27 +1,60 @@
 /**
- * Structured error classification and reporting
- * Implements T067: Structured error classification (network, auth, content, filesystem)
+ * T140: Error classification with structured error categories
+ * Supports FR-041 for systematic error handling and recovery
  */
 
 import { logger } from '../util/logger.js';
+import type { QueueItem } from '../models/queueEntities.js';
 
-export enum ErrorCategory {
-  NETWORK = 'network',
-  AUTHENTICATION = 'authentication',
-  AUTHORIZATION = 'authorization',
-  CONTENT = 'content',
-  FILESYSTEM = 'filesystem',
-  CONFIGURATION = 'configuration',
-  RATE_LIMIT = 'rate_limit',
-  VALIDATION = 'validation',
-  UNKNOWN = 'unknown',
+export type ErrorCategory = 
+  | 'network'        // Network connectivity issues
+  | 'authentication' // Auth failures, token expiry
+  | 'authorization'  // Permission denied, access control
+  | 'rateLimit'      // API rate limiting
+  | 'confluence'     // Confluence-specific errors
+  | 'validation'     // Data validation failures
+  | 'transformation' // Markdown transformation errors
+  | 'filesystem'     // File system errors
+  | 'queue'          // Queue management errors
+  | 'configuration'  // Configuration/setup errors
+  | 'unknown';       // Unclassified errors
+
+export type ErrorSeverity = 'low' | 'medium' | 'high' | 'critical';
+
+export interface RetryStrategy {
+  maxRetries: number;
+  baseDelayMs: number;
+  backoffMultiplier: number;
+  maxDelayMs: number;
+  jitterMs: number;
 }
 
-export enum ErrorSeverity {
-  LOW = 'low',
-  MEDIUM = 'medium',
-  HIGH = 'high',
-  CRITICAL = 'critical',
+export interface ErrorContext {
+  operation: string;
+  pageId?: string;
+  spaceKey?: string;
+  url?: string;
+  queueItem?: QueueItem;
+  timestamp: number;
+  userAgent?: string;
+  requestId?: string;
+}
+
+export interface ErrorClassification {
+  category: ErrorCategory;
+  severity: ErrorSeverity;
+  recoverable: boolean;
+  retryable: boolean;
+  userActionRequired: boolean;
+  description: string;
+  suggestedAction: string;
+  retryStrategy?: RetryStrategy;
+}
+
+export interface ErrorPattern {
+  pattern: RegExp | string;
+  classification: ErrorClassification;
+  matches: (error: Error, context?: ErrorContext) => boolean;
 }
 
 export interface ClassifiedError {
@@ -30,51 +63,159 @@ export interface ClassifiedError {
   severity: ErrorSeverity;
   message: string;
   originalError: Error;
-  context: Record<string, unknown>;
+  context: ErrorContext;
   timestamp: number;
   retryable: boolean;
+  recoverable: boolean;
+  userActionRequired: boolean;
   suggestions: string[];
+  retryStrategy?: RetryStrategy;
 }
 
 export interface ErrorStats {
   totalErrors: number;
-  byCategory: Map<ErrorCategory, number>;
-  bySeverity: Map<ErrorSeverity, number>;
+  byCategory: Record<ErrorCategory, number>;
+  bySeverity: Record<ErrorSeverity, number>;
   retryableErrors: number;
   nonRetryableErrors: number;
   recentErrors: ClassifiedError[];
 }
 
-export interface ErrorPattern {
-  pattern: RegExp;
-  category: ErrorCategory;
-  severity: ErrorSeverity;
-  retryable: boolean;
-  suggestions: string[];
-}
-
-/**
- * Classifies and manages errors during export operations
- */
 export class ErrorClassifier {
+  private readonly patterns: ErrorPattern[] = [];
   private errors: ClassifiedError[] = [];
-  private errorPatterns: ErrorPattern[] = [];
   private errorCounter = 0;
 
   constructor() {
-    this.initializePatterns();
+    this.initializeDefaultPatterns();
+  }
+
+  /**
+   * Classify an error and provide handling recommendations
+   */
+  classify(error: Error, context?: ErrorContext): ErrorClassification {
+    // Try pattern matching first
+    for (const pattern of this.patterns) {
+      if (pattern.matches(error, context)) {
+        return {
+          ...pattern.classification,
+          description: this.enhanceDescription(pattern.classification.description, error, context),
+        };
+      }
+    }
+
+    // Fallback classification
+    return this.classifyByProperties(error, context);
   }
 
   /**
    * Classifies an error and adds it to the collection
    */
-  classifyError(error: Error, context?: Record<string, unknown>): ClassifiedError {
-    const classified = this.performClassification(error, context || {});
-    this.errors.push(classified);
+  classifyError(error: Error, context?: ErrorContext): ClassifiedError {
+    const classification = this.classify(error, context);
+    const id = `error_${++this.errorCounter}`;
     
+    const classified: ClassifiedError = {
+      id,
+      category: classification.category,
+      severity: classification.severity,
+      message: error.message,
+      originalError: error,
+      context: context || { operation: 'unknown', timestamp: Date.now() },
+      timestamp: Date.now(),
+      retryable: classification.retryable,
+      recoverable: classification.recoverable,
+      userActionRequired: classification.userActionRequired,
+      suggestions: [classification.suggestedAction],
+      retryStrategy: classification.retryStrategy,
+    };
+    
+    this.errors.push(classified);
     this.logClassifiedError(classified);
     
     return classified;
+  }
+
+  /**
+   * Get retry strategy for a classified error
+   */
+  getRetryStrategy(classification: ErrorClassification): RetryStrategy | null {
+    if (!classification.retryable) {
+      return null;
+    }
+
+    return classification.retryStrategy || this.getDefaultRetryStrategy(classification.category);
+  }
+
+  /**
+   * Check if error should trigger immediate failure
+   */
+  shouldFailImmediately(classification: ErrorClassification): boolean {
+    return classification.severity === 'critical' && !classification.recoverable;
+  }
+
+  /**
+   * Get user-friendly error message
+   */
+  getUserMessage(classification: ErrorClassification): string {
+    const baseMessage = classification.description;
+    const action = classification.userActionRequired 
+      ? ` ${classification.suggestedAction}`
+      : '';
+    
+    return `${baseMessage}${action}`;
+  }
+
+  /**
+   * Register custom error pattern
+   */
+  addPattern(pattern: ErrorPattern): void {
+    this.patterns.unshift(pattern); // Add to front for priority
+  }
+
+  /**
+   * Get error statistics by category
+   */
+  getErrorStatistics(errors: Array<{ error: Error; context?: ErrorContext }>): {
+    byCategory: Record<ErrorCategory, number>;
+    bySeverity: Record<ErrorSeverity, number>;
+    retryableCount: number;
+    recoverableCount: number;
+    totalErrors: number;
+  } {
+    const stats = {
+      byCategory: {} as Record<ErrorCategory, number>,
+      bySeverity: {} as Record<ErrorSeverity, number>,
+      retryableCount: 0,
+      recoverableCount: 0,
+      totalErrors: errors.length,
+    };
+
+    // Initialize counters
+    const categories: ErrorCategory[] = [
+      'network', 'authentication', 'authorization', 'rateLimit', 'confluence',
+      'validation', 'transformation', 'filesystem', 'queue', 'configuration', 'unknown'
+    ];
+    const severities: ErrorSeverity[] = ['low', 'medium', 'high', 'critical'];
+
+    for (const category of categories) {
+      stats.byCategory[category] = 0;
+    }
+    for (const severity of severities) {
+      stats.bySeverity[severity] = 0;
+    }
+
+    // Count errors
+    for (const { error, context } of errors) {
+      const classification = this.classify(error, context);
+      stats.byCategory[classification.category]++;
+      stats.bySeverity[classification.severity]++;
+      
+      if (classification.retryable) stats.retryableCount++;
+      if (classification.recoverable) stats.recoverableCount++;
+    }
+
+    return stats;
   }
 
   /**
@@ -83,21 +224,33 @@ export class ErrorClassifier {
   getStats(): ErrorStats {
     const stats: ErrorStats = {
       totalErrors: this.errors.length,
-      byCategory: new Map(),
-      bySeverity: new Map(),
+      byCategory: {} as Record<ErrorCategory, number>,
+      bySeverity: {} as Record<ErrorSeverity, number>,
       retryableErrors: 0,
       nonRetryableErrors: 0,
       recentErrors: this.errors.slice(-10), // Last 10 errors
     };
 
+    // Initialize counters
+    const categories: ErrorCategory[] = [
+      'network', 'authentication', 'authorization', 'rateLimit', 'confluence',
+      'validation', 'transformation', 'filesystem', 'queue', 'configuration', 'unknown'
+    ];
+    const severities: ErrorSeverity[] = ['low', 'medium', 'high', 'critical'];
+
+    for (const category of categories) {
+      stats.byCategory[category] = 0;
+    }
+    for (const severity of severities) {
+      stats.bySeverity[severity] = 0;
+    }
+
     for (const error of this.errors) {
       // Count by category
-      const categoryCount = stats.byCategory.get(error.category) || 0;
-      stats.byCategory.set(error.category, categoryCount + 1);
+      stats.byCategory[error.category]++;
 
       // Count by severity
-      const severityCount = stats.bySeverity.get(error.severity) || 0;
-      stats.bySeverity.set(error.severity, severityCount + 1);
+      stats.bySeverity[error.severity]++;
 
       // Count retryable/non-retryable
       if (error.retryable) {
@@ -139,273 +292,275 @@ export class ErrorClassifier {
     this.errorCounter = 0;
   }
 
-  /**
-   * Generates error summary report
-   */
-  generateReport(): string {
-    const stats = this.getStats();
-    const lines: string[] = [];
-
-    lines.push('Error Classification Report');
-    lines.push('='.repeat(40));
-    lines.push(`Total Errors: ${stats.totalErrors}`);
-    lines.push(`Retryable: ${stats.retryableErrors}`);
-    lines.push(`Non-retryable: ${stats.nonRetryableErrors}`);
-    lines.push('');
-
-    // Category breakdown
-    lines.push('Errors by Category:');
-    for (const category of Object.values(ErrorCategory)) {
-      const count = stats.byCategory.get(category) || 0;
-      if (count > 0) {
-        const percentage = ((count / stats.totalErrors) * 100).toFixed(1);
-        lines.push(`  ${category}: ${count} (${percentage}%)`);
-      }
-    }
-    lines.push('');
-
-    // Severity breakdown
-    lines.push('Errors by Severity:');
-    for (const severity of Object.values(ErrorSeverity)) {
-      const count = stats.bySeverity.get(severity) || 0;
-      if (count > 0) {
-        const percentage = ((count / stats.totalErrors) * 100).toFixed(1);
-        lines.push(`  ${severity}: ${count} (${percentage}%)`);
-      }
-    }
-    lines.push('');
-
-    // Recent errors
-    if (stats.recentErrors.length > 0) {
-      lines.push('Recent Errors:');
-      for (const error of stats.recentErrors.slice(-5)) {
-        lines.push(`  [${error.category}/${error.severity}] ${error.message}`);
-      }
-    }
-
-    return lines.join('\n');
-  }
-
-  /**
-   * Logs error summary
-   */
-  logSummary(): void {
-    const stats = this.getStats();
-    
-    logger.info('Error Classification Summary', {
-      totalErrors: stats.totalErrors,
-      retryableErrors: stats.retryableErrors,
-      nonRetryableErrors: stats.nonRetryableErrors,
-      categoryBreakdown: Object.fromEntries(stats.byCategory),
-      severityBreakdown: Object.fromEntries(stats.bySeverity),
+  private initializeDefaultPatterns(): void {
+    // Network errors
+    this.addPattern({
+      pattern: /ENOTFOUND|ECONNREFUSED|ECONNRESET|ETIMEDOUT|socket hang up/i,
+      classification: {
+        category: 'network',
+        severity: 'medium',
+        recoverable: true,
+        retryable: true,
+        userActionRequired: false,
+        description: 'Network connectivity issue',
+        suggestedAction: 'Check network connection and try again',
+        retryStrategy: {
+          maxRetries: 5,
+          baseDelayMs: 2000,
+          backoffMultiplier: 2,
+          maxDelayMs: 30000,
+          jitterMs: 1000,
+        },
+      },
+      matches: (error) => /ENOTFOUND|ECONNREFUSED|ECONNRESET|ETIMEDOUT|socket hang up/i.test(error.message),
     });
 
-    // Log critical errors separately
-    const criticalErrors = this.getErrorsBySeverity(ErrorSeverity.CRITICAL);
-    if (criticalErrors.length > 0) {
-      logger.error('Critical errors detected', {
-        count: criticalErrors.length,
-        errors: criticalErrors.map(e => ({
-          category: e.category,
-          message: e.message,
-          context: e.context,
-        })),
-      });
-    }
+    // Authentication errors
+    this.addPattern({
+      pattern: /401|unauthorized|authentication|invalid.+token/i,
+      classification: {
+        category: 'authentication',
+        severity: 'high',
+        recoverable: false,
+        retryable: false,
+        userActionRequired: true,
+        description: 'Authentication failed',
+        suggestedAction: 'Check credentials and token validity',
+      },
+      matches: (error) => {
+        const message = error.message.toLowerCase();
+        return message.includes('401') || 
+               message.includes('unauthorized') ||
+               message.includes('authentication') ||
+               /invalid.+token/.test(message);
+      },
+    });
 
-    // Log error patterns
-    this.logErrorPatterns();
+    // Rate limiting
+    this.addPattern({
+      pattern: /429|rate.+limit|too.+many.+requests/i,
+      classification: {
+        category: 'rateLimit',
+        severity: 'medium',
+        recoverable: true,
+        retryable: true,
+        userActionRequired: false,
+        description: 'API rate limit exceeded',
+        suggestedAction: 'Will retry with exponential backoff',
+        retryStrategy: {
+          maxRetries: 10,
+          baseDelayMs: 60000, // Start with 1 minute
+          backoffMultiplier: 2,
+          maxDelayMs: 600000, // Max 10 minutes
+          jitterMs: 5000,
+        },
+      },
+      matches: (error) => {
+        const message = error.message.toLowerCase();
+        return message.includes('429') ||
+               /rate.+limit/.test(message) ||
+               /too.+many.+requests/.test(message);
+      },
+    });
   }
 
-  /**
-   * Performs the actual error classification
-   */
-  private performClassification(error: Error, context: Record<string, unknown>): ClassifiedError {
-    const id = `error_${++this.errorCounter}`;
-    const timestamp = Date.now();
+  private classifyByProperties(error: Error, context?: ErrorContext): ErrorClassification {
+    // Analyze error type and properties
+    const errorName = error.name?.toLowerCase() || '';
+    const errorMessage = error.message?.toLowerCase() || '';
 
-    // Try to match against known patterns
-    for (const pattern of this.errorPatterns) {
-      if (pattern.pattern.test(error.message)) {
-        return {
-          id,
-          category: pattern.category,
-          severity: pattern.severity,
-          message: error.message,
-          originalError: error,
-          context,
-          timestamp,
-          retryable: pattern.retryable,
-          suggestions: [...pattern.suggestions],
-        };
-      }
-    }
+    // Check for common error types
+    const syntaxErrorClassification = this.checkSyntaxError(errorName, errorMessage);
+    if (syntaxErrorClassification) return syntaxErrorClassification;
 
-    // Fallback classification based on error properties
-    return this.performFallbackClassification(error, context, id, timestamp);
+    const timeoutErrorClassification = this.checkTimeoutError(errorName, errorMessage);
+    if (timeoutErrorClassification) return timeoutErrorClassification;
+
+    // Context-based classification
+    const contextBasedClassification = this.getContextBasedClassification(context);
+    if (contextBasedClassification) return contextBasedClassification;
+
+    // Default classification for unknown errors
+    return this.getDefaultClassification();
   }
 
-  /**
-   * Performs fallback classification when no pattern matches
-   */
-  private performFallbackClassification(
-    error: Error,
-    context: Record<string, unknown>,
-    id: string,
-    timestamp: number
-  ): ClassifiedError {
-    let category = ErrorCategory.UNKNOWN;
-    let severity = ErrorSeverity.MEDIUM;
-    let retryable = false;
-    const suggestions: string[] = [];
+  private checkSyntaxError(errorName: string, errorMessage: string): ErrorClassification | null {
+    if (errorName.includes('syntax') || errorMessage.includes('syntax')) {
+      return {
+        category: 'validation',
+        severity: 'medium',
+        recoverable: false,
+        retryable: false,
+        userActionRequired: true,
+        description: 'Syntax error in data',
+        suggestedAction: 'Check data format and syntax',
+      };
+    }
+    return null;
+  }
 
-    // Check error name/type for clues
-    if (error.name === 'TypeError' || error.name === 'ReferenceError') {
-      category = ErrorCategory.VALIDATION;
-      severity = ErrorSeverity.HIGH;
-      retryable = false;
-      suggestions.push('Check input validation and data types');
-    } else if (error.name === 'SyntaxError') {
-      category = ErrorCategory.CONTENT;
-      severity = ErrorSeverity.HIGH;
-      retryable = false;
-      suggestions.push('Verify content format and encoding');
+  private checkTimeoutError(errorName: string, errorMessage: string): ErrorClassification | null {
+    if (errorName.includes('timeout') || errorMessage.includes('timeout')) {
+      return {
+        category: 'network',
+        severity: 'medium',
+        recoverable: true,
+        retryable: true,
+        userActionRequired: false,
+        description: 'Operation timed out',
+        suggestedAction: 'Will retry automatically',
+      };
+    }
+    return null;
+  }
+
+  private getContextBasedClassification(context?: ErrorContext): ErrorClassification | null {
+    if (!context?.operation) return null;
+
+    const operation = context.operation.toLowerCase();
+    
+    if (operation.includes('queue')) {
+      return {
+        category: 'queue',
+        severity: 'medium',
+        recoverable: true,
+        retryable: true,
+        userActionRequired: false,
+        description: 'Queue operation failed',
+        suggestedAction: 'Queue will attempt recovery',
+      };
     }
 
-    // Check context for additional clues
-    if (context.operation === 'file_write' || context.operation === 'file_read') {
-      category = ErrorCategory.FILESYSTEM;
-      retryable = true;
-      suggestions.push('Check file permissions and disk space');
-    } else if (context.operation === 'api_call') {
-      category = ErrorCategory.NETWORK;
-      retryable = true;
-      suggestions.push('Check network connectivity and retry');
+    if (operation.includes('transform') || operation.includes('markdown')) {
+      return {
+        category: 'transformation',
+        severity: 'medium',
+        recoverable: true,
+        retryable: true,
+        userActionRequired: false,
+        description: 'Content transformation failed',
+        suggestedAction: 'Will retry with alternative transformation',
+      };
     }
 
+    return null;
+  }
+
+  private getDefaultClassification(): ErrorClassification {
     return {
-      id,
-      category,
-      severity,
-      message: error.message,
-      originalError: error,
-      context,
-      timestamp,
-      retryable,
-      suggestions,
+      category: 'unknown',
+      severity: 'medium',
+      recoverable: true,
+      retryable: true,
+      userActionRequired: false,
+      description: 'Unknown error occurred',
+      suggestedAction: 'Will attempt automatic retry',
     };
   }
 
-  /**
-   * Initializes known error patterns
-   */
-  private initializePatterns(): void {
-    this.errorPatterns = [
-      // Network errors
-      {
-        pattern: /ECONNRESET|ECONNREFUSED|ETIMEDOUT|ENOTFOUND/i,
-        category: ErrorCategory.NETWORK,
-        severity: ErrorSeverity.MEDIUM,
-        retryable: true,
-        suggestions: ['Check network connectivity', 'Verify server URL', 'Retry with exponential backoff'],
+  private getDefaultRetryStrategy(category: ErrorCategory): RetryStrategy {
+    const strategies: Record<ErrorCategory, RetryStrategy> = {
+      network: {
+        maxRetries: 5,
+        baseDelayMs: 2000,
+        backoffMultiplier: 2,
+        maxDelayMs: 30000,
+        jitterMs: 1000,
       },
-      {
-        pattern: /fetch failed|network error|connection failed/i,
-        category: ErrorCategory.NETWORK,
-        severity: ErrorSeverity.MEDIUM,
-        retryable: true,
-        suggestions: ['Check internet connection', 'Verify firewall settings', 'Try again later'],
+      rateLimit: {
+        maxRetries: 10,
+        baseDelayMs: 60000,
+        backoffMultiplier: 2,
+        maxDelayMs: 600000,
+        jitterMs: 5000,
       },
+      confluence: {
+        maxRetries: 3,
+        baseDelayMs: 1000,
+        backoffMultiplier: 2,
+        maxDelayMs: 10000,
+        jitterMs: 500,
+      },
+      transformation: {
+        maxRetries: 2,
+        baseDelayMs: 500,
+        backoffMultiplier: 2,
+        maxDelayMs: 5000,
+        jitterMs: 200,
+      },
+      filesystem: {
+        maxRetries: 3,
+        baseDelayMs: 1000,
+        backoffMultiplier: 2,
+        maxDelayMs: 10000,
+        jitterMs: 500,
+      },
+      queue: {
+        maxRetries: 5,
+        baseDelayMs: 5000,
+        backoffMultiplier: 1.5,
+        maxDelayMs: 30000,
+        jitterMs: 2000,
+      },
+      // Non-retryable categories get minimal retry
+      authentication: {
+        maxRetries: 1,
+        baseDelayMs: 1000,
+        backoffMultiplier: 1,
+        maxDelayMs: 1000,
+        jitterMs: 0,
+      },
+      authorization: {
+        maxRetries: 1,
+        baseDelayMs: 1000,
+        backoffMultiplier: 1,
+        maxDelayMs: 1000,
+        jitterMs: 0,
+      },
+      validation: {
+        maxRetries: 1,
+        baseDelayMs: 1000,
+        backoffMultiplier: 1,
+        maxDelayMs: 1000,
+        jitterMs: 0,
+      },
+      configuration: {
+        maxRetries: 1,
+        baseDelayMs: 1000,
+        backoffMultiplier: 1,
+        maxDelayMs: 1000,
+        jitterMs: 0,
+      },
+      unknown: {
+        maxRetries: 3,
+        baseDelayMs: 2000,
+        backoffMultiplier: 2,
+        maxDelayMs: 15000,
+        jitterMs: 1000,
+      },
+    };
 
-      // Authentication errors
-      {
-        pattern: /unauthorized|authentication failed|invalid credentials/i,
-        category: ErrorCategory.AUTHENTICATION,
-        severity: ErrorSeverity.HIGH,
-        retryable: false,
-        suggestions: ['Verify username and password', 'Check API token validity', 'Refresh authentication'],
-      },
-      {
-        pattern: /401|403/,
-        category: ErrorCategory.AUTHENTICATION,
-        severity: ErrorSeverity.HIGH,
-        retryable: false,
-        suggestions: ['Check credentials', 'Verify account permissions'],
-      },
-
-      // Authorization errors
-      {
-        pattern: /forbidden|access denied|insufficient permissions/i,
-        category: ErrorCategory.AUTHORIZATION,
-        severity: ErrorSeverity.HIGH,
-        retryable: false,
-        suggestions: ['Check user permissions', 'Request access from administrator', 'Verify space permissions'],
-      },
-
-      // Rate limiting
-      {
-        pattern: /rate limit|too many requests|429/i,
-        category: ErrorCategory.RATE_LIMIT,
-        severity: ErrorSeverity.MEDIUM,
-        retryable: true,
-        suggestions: ['Reduce request frequency', 'Implement exponential backoff', 'Contact administrator for rate limit increase'],
-      },
-
-      // Content errors
-      {
-        pattern: /invalid markup|malformed content|content error/i,
-        category: ErrorCategory.CONTENT,
-        severity: ErrorSeverity.MEDIUM,
-        retryable: false,
-        suggestions: ['Check page content format', 'Verify markup syntax', 'Review content encoding'],
-      },
-      {
-        pattern: /attachment not found|missing attachment/i,
-        category: ErrorCategory.CONTENT,
-        severity: ErrorSeverity.LOW,
-        retryable: true,
-        suggestions: ['Verify attachment exists', 'Check attachment permissions', 'Skip missing attachments'],
-      },
-
-      // Filesystem errors
-      {
-        pattern: /ENOENT|EACCES|EMFILE|ENOSPC/i,
-        category: ErrorCategory.FILESYSTEM,
-        severity: ErrorSeverity.HIGH,
-        retryable: true,
-        suggestions: ['Check file permissions', 'Verify disk space', 'Check file path validity'],
-      },
-      {
-        pattern: /permission denied|cannot create file|directory not found/i,
-        category: ErrorCategory.FILESYSTEM,
-        severity: ErrorSeverity.HIGH,
-        retryable: true,
-        suggestions: ['Check directory permissions', 'Verify output path exists', 'Run with appropriate permissions'],
-      },
-
-      // Configuration errors
-      {
-        pattern: /configuration error|invalid config|missing required/i,
-        category: ErrorCategory.CONFIGURATION,
-        severity: ErrorSeverity.HIGH,
-        retryable: false,
-        suggestions: ['Review configuration file', 'Check required environment variables', 'Validate configuration schema'],
-      },
-
-      // Validation errors
-      {
-        pattern: /validation failed|invalid input|schema error/i,
-        category: ErrorCategory.VALIDATION,
-        severity: ErrorSeverity.MEDIUM,
-        retryable: false,
-        suggestions: ['Check input format', 'Verify data types', 'Review validation rules'],
-      },
-    ];
+    return strategies[category];
   }
 
-  /**
-   * Logs a classified error
-   */
+  private enhanceDescription(
+    baseDescription: string,
+    _error: Error,
+    context?: ErrorContext
+  ): string {
+    let enhanced = baseDescription;
+
+    if (context?.pageId) {
+      enhanced += ` (Page: ${context.pageId})`;
+    }
+
+    if (context?.operation) {
+      enhanced += ` (Operation: ${context.operation})`;
+    }
+
+    return enhanced;
+  }
+
   private logClassifiedError(error: ClassifiedError): void {
     const logLevel = this.getLogLevelForSeverity(error.severity);
     
@@ -420,51 +575,62 @@ export class ErrorClassifier {
     });
   }
 
-  /**
-   * Gets appropriate log level for error severity
-   */
   private getLogLevelForSeverity(severity: ErrorSeverity): 'debug' | 'info' | 'warn' | 'error' {
     switch (severity) {
-      case ErrorSeverity.LOW:
+      case 'low':
         return 'debug';
-      case ErrorSeverity.MEDIUM:
+      case 'medium':
         return 'info';
-      case ErrorSeverity.HIGH:
+      case 'high':
         return 'warn';
-      case ErrorSeverity.CRITICAL:
+      case 'critical':
         return 'error';
       default:
         return 'info';
     }
   }
+}
 
-  /**
-   * Logs common error patterns found
-   */
-  private logErrorPatterns(): void {
-    if (this.errors.length === 0) return;
+/**
+ * Global error classifier instance
+ */
+export const errorClassifier = new ErrorClassifier();
 
-    const patternCounts = new Map<string, number>();
-    
-    for (const error of this.errors) {
-      const key = `${error.category}:${error.severity}`;
-      patternCounts.set(key, (patternCounts.get(key) || 0) + 1);
-    }
+/**
+ * Convenience function to classify an error
+ */
+export function classifyError(error: Error, context?: ErrorContext): ErrorClassification {
+  return errorClassifier.classify(error, context);
+}
 
-    const sortedPatterns = Array.from(patternCounts.entries())
-      .sort(([, a], [, b]) => b - a)
-      .slice(0, 5); // Top 5 patterns
+/**
+ * Check if an error is retryable
+ */
+export function isRetryableError(error: Error, context?: ErrorContext): boolean {
+  const classification = classifyError(error, context);
+  return classification.retryable;
+}
 
-    if (sortedPatterns.length > 0) {
-      logger.info('Most common error patterns', {
-        patterns: sortedPatterns.map(([pattern, count]) => ({
-          pattern,
-          count,
-          percentage: ((count / this.errors.length) * 100).toFixed(1),
-        })),
-      });
-    }
-  }
+/**
+ * Get retry strategy for an error
+ */
+export function getErrorRetryStrategy(error: Error, context?: ErrorContext): RetryStrategy | null {
+  const classification = classifyError(error, context);
+  return errorClassifier.getRetryStrategy(classification);
+}
+
+/**
+ * Create error context for better classification
+ */
+export function createErrorContext(
+  operation: string,
+  options: Partial<Omit<ErrorContext, 'operation' | 'timestamp'>> = {}
+): ErrorContext {
+  return {
+    operation,
+    timestamp: Date.now(),
+    ...options,
+  };
 }
 
 /**

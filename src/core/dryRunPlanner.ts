@@ -1,6 +1,7 @@
 /**
  * Dry-run mode planner that simulates export without actual file operations
  * Implements T065: Dry-run mode (--dry-run flag, no actual exports/writes)
+ * Implements T129: Dry-run planner output with queue simulation
  */
 
 import { join } from 'path';
@@ -16,6 +17,26 @@ export interface DryRunPlan {
   restrictedPages: number;
   errors: string[];
   warnings: string[];
+  queueSimulation?: QueueSimulation; // Queue simulation results
+}
+
+export interface QueueSimulation {
+  initialPages: number;
+  discoveredPages: number;
+  totalQueueOperations: number;
+  estimatedProcessingTime: number; // in seconds
+  maxQueueSize: number;
+  circularReferences: number;
+  retryOperations: number;
+  persistenceOperations: number;
+  discoveryPhases: DiscoveryPhase[];
+}
+
+export interface DiscoveryPhase {
+  phase: number;
+  pagesDiscovered: number;
+  sourceTypes: Record<string, number>; // macro, reference, user
+  estimatedTime: number;
 }
 
 export interface DryRunStats {
@@ -56,6 +77,7 @@ export class DryRunPlanner {
       restrictedPages: 0,
       errors: [],
       warnings: [],
+      queueSimulation: undefined,
     };
     this.stats = {
       pages: {
@@ -78,9 +100,9 @@ export class DryRunPlanner {
   }
 
   /**
-   * Plans the export operation based on page information
+   * Plans the export operation based on page information with queue simulation
    */
-  planExport(pages: Page[], rootPageIds?: string[]): DryRunPlan {
+  planExport(pages: Page[], rootPageIds?: string[], enableQueueSimulation = false): DryRunPlan {
     this.resetPlan();
     
     // Filter pages if root constraint is specified
@@ -88,6 +110,11 @@ export class DryRunPlanner {
     
     for (const page of filteredPages) {
       this.planPageExport(page);
+    }
+
+    // Run queue simulation if enabled
+    if (enableQueueSimulation) {
+      this.plan.queueSimulation = this.simulateQueueProcessing(filteredPages);
     }
 
     this.calculateTotals();
@@ -129,7 +156,7 @@ export class DryRunPlanner {
       outputDir: this.outputDir,
     });
 
-    const plan = this.planExport(pages);
+    const plan = this.planExport(pages, undefined, true); // Enable queue simulation
     
     // Simulate various validation checks
     this.simulateValidationChecks(pages);
@@ -142,6 +169,8 @@ export class DryRunPlanner {
       totalPages: plan.totalPages,
       expectedFiles: plan.expectedFiles.length,
       estimatedSize: this.formatBytes(plan.estimatedSize),
+      queueOperations: plan.queueSimulation?.totalQueueOperations || 0,
+      discoveredPages: plan.queueSimulation?.discoveredPages || 0,
     });
 
     return plan;
@@ -160,6 +189,7 @@ export class DryRunPlanner {
       restrictedPages: 0,
       errors: [],
       warnings: [],
+      queueSimulation: undefined,
     };
     
     this.stats = {
@@ -439,6 +469,175 @@ export class DryRunPlanner {
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     
     return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
+  }
+
+  /**
+   * Simulates queue processing and discovery operations
+   */
+  private simulateQueueProcessing(pages: Page[]): QueueSimulation {
+    const simulation: QueueSimulation = {
+      initialPages: pages.length,
+      discoveredPages: 0,
+      totalQueueOperations: pages.length,
+      estimatedProcessingTime: 0,
+      maxQueueSize: pages.length,
+      circularReferences: 0,
+      retryOperations: 0,
+      persistenceOperations: 0,
+      discoveryPhases: [],
+    };
+
+    let currentPhase = 1;
+    const remainingPages = [...pages];
+    let queueSize = pages.length;
+    const processedPages = new Set<string>();
+    const allDiscoveredPages = new Set(pages.map(p => p.id));
+
+    // Simulate discovery phases
+    while (remainingPages.length > 0 && currentPhase <= 10) { // Max 10 phases for safety
+      const phase: DiscoveryPhase = {
+        phase: currentPhase,
+        pagesDiscovered: 0,
+        sourceTypes: { macro: 0, reference: 0, user: 0 },
+        estimatedTime: 0,
+      };
+
+      const batchSize = Math.min(10, remainingPages.length); // Process 10 pages per phase
+      const currentBatch = remainingPages.splice(0, batchSize);
+      
+      for (const page of currentBatch) {
+        // Simulate page processing time (base + content complexity)
+        const processingTime = this.estimatePageProcessingTime(page);
+        phase.estimatedTime += processingTime;
+        
+        // Simulate link/macro discovery in this page
+        const discoveries = this.simulatePageDiscovery(page, allDiscoveredPages);
+        
+        phase.pagesDiscovered += discoveries.discovered.length;
+        phase.sourceTypes.macro += discoveries.macroLinks;
+        phase.sourceTypes.reference += discoveries.pageReferences;
+        phase.sourceTypes.user += discoveries.userMentions;
+
+        // Add discovered pages to the queue
+        for (const discoveredPageId of discoveries.discovered) {
+          if (!allDiscoveredPages.has(discoveredPageId) && !processedPages.has(discoveredPageId)) {
+            allDiscoveredPages.add(discoveredPageId);
+            // Simulate creating page object for discovered page
+            const discoveredPage: Page = {
+              id: discoveredPageId,
+              title: `Discovered Page ${discoveredPageId}`,
+              version: 1,
+              type: 'page',
+            };
+            remainingPages.push(discoveredPage);
+            queueSize++;
+          }
+        }
+
+        // Simulate circular reference detection
+        if (discoveries.circularRef) {
+          simulation.circularReferences++;
+        }
+
+        processedPages.add(page.id);
+      }
+
+      simulation.maxQueueSize = Math.max(simulation.maxQueueSize, queueSize);
+      simulation.discoveryPhases.push(phase);
+      simulation.estimatedProcessingTime += phase.estimatedTime;
+      queueSize -= batchSize;
+      currentPhase++;
+    }
+
+    simulation.discoveredPages = allDiscoveredPages.size - simulation.initialPages;
+    simulation.totalQueueOperations = allDiscoveredPages.size;
+
+    // Simulate retry operations (5% failure rate, avg 1.2 retries per failure)
+    const failureRate = 0.05;
+    const avgRetriesPerFailure = 1.2;
+    simulation.retryOperations = Math.round(simulation.totalQueueOperations * failureRate * avgRetriesPerFailure);
+
+    // Simulate persistence operations (every 10 operations)
+    simulation.persistenceOperations = Math.ceil(simulation.totalQueueOperations / 10);
+
+    logger.debug('Queue simulation completed', {
+      initialPages: simulation.initialPages,
+      discoveredPages: simulation.discoveredPages,
+      totalOperations: simulation.totalQueueOperations,
+      maxQueueSize: simulation.maxQueueSize,
+      estimatedTime: `${simulation.estimatedProcessingTime.toFixed(1)}s`,
+      phases: simulation.discoveryPhases.length,
+    });
+
+    return simulation;
+  }
+
+  /**
+   * Simulates page discovery operations
+   */
+  private simulatePageDiscovery(page: Page, knownPages: Set<string>): {
+    discovered: string[];
+    macroLinks: number;
+    pageReferences: number;
+    userMentions: number;
+    circularRef: boolean;
+  } {
+    const result = {
+      discovered: [] as string[],
+      macroLinks: 0,
+      pageReferences: 0,
+      userMentions: 0,
+      circularRef: false,
+    };
+
+    // Simulate discovery based on page characteristics
+    const titleWords = page.title.split(' ').length;
+    const complexity = Math.min(titleWords / 5, 3); // 0-3 complexity score
+
+    // Simulate macro links (confluence-specific macros)
+    result.macroLinks = Math.floor(Math.random() * complexity * 2);
+    for (let i = 0; i < result.macroLinks; i++) {
+      const discoveredId = `macro-${page.id}-${i}`;
+      if (!knownPages.has(discoveredId)) {
+        result.discovered.push(discoveredId);
+      }
+    }
+
+    // Simulate page references (internal links)
+    result.pageReferences = Math.floor(Math.random() * complexity * 3);
+    for (let i = 0; i < result.pageReferences; i++) {
+      const discoveredId = `ref-${page.id}-${i}`;
+      if (!knownPages.has(discoveredId)) {
+        result.discovered.push(discoveredId);
+      } else if (discoveredId === page.id) {
+        result.circularRef = true;
+      }
+    }
+
+    // Simulate user mentions
+    result.userMentions = Math.floor(Math.random() * complexity);
+    for (let i = 0; i < result.userMentions; i++) {
+      const userId = `user-page-${i}`;
+      if (!knownPages.has(userId)) {
+        result.discovered.push(userId);
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * Estimates processing time for a single page
+   */
+  private estimatePageProcessingTime(page: Page): number {
+    // Base processing time: 100ms per page
+    const baseTime = 0.1;
+    
+    // Add complexity based on title length and content estimation
+    const titleComplexity = page.title.length / 100; // 0.01s per character
+    const contentComplexity = Math.random() * 0.5; // 0-500ms random content processing
+    
+    return baseTime + titleComplexity + contentComplexity;
   }
 }
 

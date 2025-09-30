@@ -46,7 +46,53 @@ export interface RuleConfig {
   [key: string]: unknown;
 }
 
+// New interfaces for transform/cleanupRules pattern
+export interface CleanupContext {
+  fileName: string;
+  spaceKey: string;
+  pageId: string;
+  filePath?: string;
+}
+
+export interface CleanupIssue {
+  severity: ErrorSeverity;
+  message: string;
+  line: number;
+  column: number;
+  rule: string;
+}
+
+export interface CleanupMetrics {
+  changesApplied: number;
+  charactersProcessed: number;
+  processingTimeMs: number;
+  issues: CleanupIssue[];
+}
+
+export interface CleanupResultMetadata {
+  ruleApplied: string;
+  version: string;
+  timestamp: string;
+  context: CleanupContext;
+}
+
+export interface CleanupResult {
+  content: string;
+  metadata: CleanupResultMetadata;
+  metrics: CleanupMetrics;
+  changed: boolean;
+}
+
+// Interface for transform/cleanupRules pattern
 export interface CleanupRule {
+  readonly name: string;
+  readonly description: string;
+  readonly version: string;
+  process(content: string, context: CleanupContext): Promise<CleanupResult>;
+}
+
+// Original interfaces for cleanup service pattern
+export interface OldCleanupRule {
   name: string;
   priority: number;
   enabled: boolean;
@@ -70,13 +116,14 @@ export interface RuleResult {
   preservedBlocks: number;
 }
 
-export interface CleanupResult {
+export interface OldCleanupResult {
   originalContent: string;
   cleanedContent: string;
   appliedRules: RuleResult[];
   processingTime: number;
   errors: CleanupError[];
   warnings: string[];
+  success: boolean;
 }
 
 export interface CleanupStats {
@@ -108,7 +155,7 @@ export interface ICleanupRule {
 
 // Service interface for cleanup orchestration
 export interface ICleanupService {
-  process(document: MarkdownDocument, config: CleanupConfig): Promise<CleanupResult>;
+  process(document: MarkdownDocument, config: CleanupConfig): Promise<OldCleanupResult>;
   getAvailableRules(): ICleanupRule[];
   validateConfig(config: CleanupConfig): boolean;
 }

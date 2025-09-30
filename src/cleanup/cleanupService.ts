@@ -6,7 +6,7 @@
 import type { 
   ICleanupService, 
   ICleanupRule, 
-  CleanupResult, 
+  OldCleanupResult, 
   CleanupConfig, 
   MarkdownDocument, 
   RuleResult,
@@ -25,7 +25,7 @@ export class MarkdownCleanupService implements ICleanupService {
   /**
    * Process markdown document with cleanup rules.
    */
-  async process(document: MarkdownDocument, config: CleanupConfig): Promise<CleanupResult> {
+  async process(document: MarkdownDocument, config: CleanupConfig): Promise<OldCleanupResult> {
     const startTime = Date.now();
     const appliedRules: RuleResult[] = [];
     const errors: CleanupError[] = [];
@@ -39,6 +39,7 @@ export class MarkdownCleanupService implements ICleanupService {
         processingTime: Date.now() - startTime,
         errors: [],
         warnings: ['Cleanup disabled by configuration'],
+        success: true,
       };
     }
 
@@ -85,6 +86,7 @@ export class MarkdownCleanupService implements ICleanupService {
 
       // For MVP, return original content since we're not yet modifying it
       // In full implementation, this would return the processed content
+      const hasErrors = errors.length > 0;
       return {
         originalContent: document.content,
         cleanedContent: document.content, // TODO: Apply actual transformations
@@ -92,6 +94,7 @@ export class MarkdownCleanupService implements ICleanupService {
         processingTime: Date.now() - startTime,
         errors,
         warnings,
+        success: !hasErrors,
       };
 
     } catch (error) {
@@ -108,6 +111,7 @@ export class MarkdownCleanupService implements ICleanupService {
           severity: 'error',
         }],
         warnings,
+        success: false,
       };
     }
   }
