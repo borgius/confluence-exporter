@@ -3,6 +3,14 @@ import { atomicWriteJson } from './atomicWriter.js';
 import type { ManifestEntry } from '../models/entities.js';
 import { logger } from '../util/logger.js';
 
+/**
+ * Manifest file management for export tracking and incremental updates
+ * 
+ * FR-007: Produces manifest file enumerating all exported pages with source IDs and file paths
+ * FR-011: Supports incremental export by detecting changed pages and maintaining deltas
+ * FR-020: Ensures stable output paths across runs for idempotent naming
+ */
+
 export interface Manifest {
   version: string;
   timestamp: string;

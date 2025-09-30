@@ -103,11 +103,26 @@ confluence-exporter --config confluence-export.json
 
 - `--dry-run`: Preview export without writing files
 - `--concurrency, -c <number>`: Concurrent requests (default: 5)
+- `--limit <number>`: Maximum number of pages to fetch (useful for testing)
 - `--resume`: Resume previous interrupted export
 - `--fresh`: Start fresh export (ignore previous state)
 - `--root <pageId>`: Export only pages under specific root page
 - `--log-level <level>`: Logging level: debug, info, warn, error (default: info)
 - `--attachment-threshold <number>`: Max attachment failures before aborting (default: 20)
+- `--cleanup-intensity <level>`: Markdown cleanup intensity: light, medium, heavy (default: medium)
+- `--cleanup-disable`: Disable automatic markdown cleanup post-processing
+
+### Key Flag Behaviors
+
+**Queue and Discovery Flags:**
+- `--limit`: Limits only the **initial** page discovery; dynamic discovery via macros and links continues beyond this limit
+- `--resume`/`--fresh`: Cannot be used together; resume requires previous export state files
+
+**Cleanup Control Flags:**
+- `--cleanup-intensity light`: Basic typography and whitespace cleanup
+- `--cleanup-intensity medium`: Adds heading normalization and smart punctuation
+- `--cleanup-intensity heavy`: Full cleanup including word wrapping and footnote formatting
+- `--cleanup-disable`: Bypasses all markdown post-processing for raw output
 
 ### Examples
 
@@ -152,6 +167,32 @@ confluence-exporter \
   --space "DOCS" \
   --out "./preview" \
   --dry-run
+```
+
+**Limited Discovery Testing**
+```bash
+confluence-exporter \
+  --space "DOCS" \
+  --out "./test-export" \
+  --limit 50 \
+  --cleanup-intensity light
+```
+
+**Raw Export (no cleanup)**
+```bash
+confluence-exporter \
+  --space "DOCS" \
+  --out "./raw-export" \
+  --cleanup-disable
+```
+
+**Fresh Start with Heavy Cleanup**
+```bash
+confluence-exporter \
+  --space "DOCS" \
+  --out "./clean-export" \
+  --fresh \
+  --cleanup-intensity heavy
 ```
 
 ## Output Structure

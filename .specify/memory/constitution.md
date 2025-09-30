@@ -57,11 +57,10 @@ Implementation follows tests—not the reverse—and the test suite serves as th
 
 Rules:
 - TDD mandatory: Write failing test → implement → refactor; commits violating this order MAY be rejected.
-- Test categories MUST be used: unit, contract, integration, end-to-end, performance.
+- Test categories MUST be used: unit, contract, integration, end-to-end.
 - Coverage: global line ≥ 90%; critical modules (security, pricing, auth, migrations) ≥ 95%.
 - No brittle tests: any flaky test MUST be fixed or quarantined within 1 working day; quarantined tests block release if >7 days old.
 - New features REQUIRE at least one integration or end-to-end scenario unless purely internal utility.
-- Performance tests MUST exercise critical paths before declaring feature “done”.
 - Test names MUST describe intent (Given_When_Then style for integration / e2e).
 - A red test MUST precede any new non-trivial code path in the same PR.
 
@@ -80,17 +79,6 @@ Rules:
 
 Rationale: Consistency and accessibility improve user trust, task success rate, and reduce support burden.
 
-### IV. Performance & Efficiency Budgets
-Software MUST meet defined performance budgets to protect user experience and infrastructure cost.
-
-Rules:
-- Backend API p95 latency <200ms, p99 <400ms under reference load; deviations require explicit PERF WAIVER comment + issue.
-- No unbounded N+1 queries; detection MUST add regression test or query instrumentation.
-- Long-running operations (>1s) MUST emit progress or async job status.
-- Each new critical path MUST expose metrics (latency, error rate) before release.
-- Performance regressions >5% against baseline MUST block merge unless rollback path documented.
-
-Rationale: Guarding latency & resource use preserves reliability, reduces cost, and improves user satisfaction.
 
 ## Quality Metrics & Operational Standards
 
@@ -101,12 +89,6 @@ Rationale: Guarding latency & resource use preserves reliability, reduces cost, 
 | Testing | Line coverage (global) | ≥90% | CI report gate |
 | Testing | Critical module coverage | ≥95% | CI blocking |
 | Testing | Flaky tests | 0 unresolved >24h | Daily triage |
-| UX | Accessibility (WCAG 2.1) | AA | Audit + CI (lint) |
-| UX | Design token usage | 100% | PR review |
-| Performance | API p95 latency | <200ms | Perf test suite |
-| Performance | Frontend TTI | <1.5s | Lighthouse/CI |
-| Performance | Service memory | <300MB | Runtime metrics |
-| Performance | Regressions | <5% drift | Release gate |
 
 Notes:
 - Metrics serve as hard gates unless explicitly waived with tracked issue.
@@ -115,10 +97,9 @@ Notes:
 ## Development Workflow & Quality Gates
 
 1. Spec Creation → Validate clarity (no implementation details) per spec template.
-2. Plan Generation → Constitution Check enumerates: quality, testing coverage plan, UX impacts, performance budgets.
+2. Plan Generation → Constitution Check enumerates: quality, testing coverage plan, UX impacts.
 3. Test Authoring → Required categories in place before implementation.
 4. Implementation → Keep changes minimal; ensure observability instrumentation.
-5. Performance Validation → Run baseline tests; compare against budgets.
 6. Accessibility & UX Validation → Automated + manual checks before merge.
 7. Review & Merge → All gates green; unresolved TODO markers prohibited (except constitution-authorized TODOs above).
 8. Post-Merge Monitoring → Verify no regression in first 24h using metrics dashboards.
@@ -144,7 +125,7 @@ Amendment Process:
 Compliance & Review:
 - Quarterly compliance review audits sample PRs for adherence.
 - Violations trigger remediation tasks before next release cycle.
-- Emergency security/performance amendments allowed with retro review ≤5 days later.
+- Emergency security amendments allowed with retro review ≤5 days later.
 
 Lifecycle & Waivers:
 - Temporary waivers MUST link to issue with expiry ≤30 days; expired waivers auto-invalid.

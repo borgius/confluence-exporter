@@ -57,6 +57,13 @@ $ARGUMENTS
    - Dependency notes
    - Parallel execution guidance
 
+8. Read and analyze the existing codebase to understand:
+   - If the feature is currently implemented (if at all)
+   - Relevant modules, classes, and functions
+   - Existing design patterns and architectural decisions
+   - Any technical debt or areas for improvement
+   - How to create a task that aligns with the existing codebase and addresses the feature requirements effectively
+
 Context for task generation: $ARGUMENTS
 
 The tasks.md should be immediately executable - each task must be specific enough that an LLM can complete it without additional context.

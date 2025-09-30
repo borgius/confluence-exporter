@@ -316,11 +316,17 @@ confluence-exporter \
 
 ### Understanding the Queue System
 
-The exporter uses an intelligent queue system that:
-1. **Discovers** pages through content analysis
-2. **Processes** them in optimal order
-3. **Handles** failures with automatic retry
-4. **Persists** state for reliable resume
+The exporter uses an intelligent two-queue architecture that:
+1. **Download Queue**: Discovers and fetches raw pages from Confluence
+2. **Processing Queue**: Transforms, cleans, and writes pages to disk
+3. **Unified Management**: Coordinates both queues for optimal throughput
+4. **Persistent State**: Maintains progress across interruptions and restarts
+
+This two-queue design provides:
+- **Resilient Recovery**: Each queue can be resumed independently
+- **Clear Separation**: Discovery logic separate from transformation logic  
+- **Controlled Flow**: Processing never outpaces discovery or vice versa
+- **Better Error Handling**: Isolated retry logic for each stage
 
 ### Queue Discovery Process
 
@@ -329,6 +335,10 @@ The exporter automatically finds pages through:
 - **Macro analysis**: `list-children`, `include`, `excerpt-include` macros
 - **Link following**: Internal page links and references
 - **User mentions**: @username references that link to pages
+
+Pages flow through both queues:
+1. **Discovery** → Download Queue → fetch from Confluence
+2. **Processing** → Processing Queue → transform and write locally
 
 ### Monitoring Queue Progress
 
@@ -349,6 +359,23 @@ Output includes:
 ```
 
 ### Resume After Interruption
+
+The exporter implements **two-phase interrupt handling** for maximum safety:
+
+#### Phase 1: Graceful Shutdown (First Ctrl+C)
+When you press Ctrl+C once:
+1. **Queue Processing Stops**: No new pages are processed
+2. **Current Operations Complete**: In-flight downloads/transforms finish
+3. **State Persisted**: Both queues are saved to disk
+4. **Clean Exit**: All files are closed properly
+
+#### Phase 2: Forced Shutdown (Second Ctrl+C)
+If you press Ctrl+C again within 10 seconds:
+1. **Immediate Stop**: All operations halt immediately
+2. **Emergency Persistence**: Quick queue state flush
+3. **Force Exit**: Process terminates without cleanup
+
+**Best Practice**: Use single Ctrl+C and wait for graceful shutdown.
 
 If export is interrupted:
 
@@ -389,10 +416,14 @@ Create a test page with:
 
 Then export and verify all referenced pages are included.
 
-#### Test Resume
-1. Start a large export
-2. Interrupt with Ctrl+C after some pages complete
-3. Resume and verify no duplicate work
+#### Test Resume and Two-Queue Architecture
+1. Start a large export (observe download queue filling first)
+2. Interrupt with **single** Ctrl+C after some pages complete
+3. Wait for graceful shutdown message
+4. Resume and verify:
+   - No duplicate downloads (pages stay in "processed" state)
+   - Processing queue resumes from where it left off
+   - Both queue states are properly maintained
 
 #### Test Error Handling
 1. Export with some inaccessible pages

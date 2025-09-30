@@ -3,6 +3,12 @@
 /**
  * CLI entry point for Confluence Space to Markdown Exporter
  * Implements commander.js interface with all required flags per T055
+ * 
+ * FR-014: Provides dry-run mode that lists planned exports without writing files
+ * FR-016: Supports configuration of space identifier input (space key vs name)
+ * FR-017: Allows filtering by root page to limit scope
+ * FR-019: Provides deterministic exit code mapping for automation/CI
+ * FR-021: Enforces resume guard requiring explicit --resume or --fresh flags
  */
 
 import { Command } from 'commander';

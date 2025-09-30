@@ -62,6 +62,16 @@ export class MarkdownCleanupService implements ICleanupService {
    * Applies cleanup rules in priority order with robust error handling.
    * Supports partial failure recovery - if some rules fail, others continue processing.
    * 
+   * // COMPLEXITY-JUSTIFICATION: This is the primary orchestration method for the cleanup
+   * // pipeline with inherently complex coordination requirements:
+   * // 1. Multi-phase rule loading and validation with intensity-based filtering
+   * // 2. Sequential rule execution with intermediate error collection
+   * // 3. Performance monitoring and resource tracking across rule applications
+   * // 4. Partial failure recovery with configurable error thresholds
+   * // 5. Comprehensive result aggregation for debugging and reporting
+   * // The complexity is necessary to provide robust cleanup behavior while maintaining
+   * // detailed observability for rule debugging and performance optimization.
+   * 
    * @param document - Markdown document to process including content and metadata
    * @param config - Cleanup configuration specifying rules, intensity, and options
    * @returns Promise resolving to cleanup result with applied rules, errors, and performance data

@@ -33,13 +33,32 @@ export interface ExitStatusDetail {
 }
 
 /**
- * Standard exit codes following Unix conventions and quickstart.md
+ * Standard exit codes per FR-019 specification
+ * These codes are stable and MUST match the spec exactly
  */
 export const EXIT_CODES = {
-  SUCCESS: 0,           // Success within thresholds
-  OPERATIONAL_ERRORS: 1, // Page export failures or attachment thresholds exceeded
-  CONFIGURATION_ERROR: 2 // Misconfiguration or validation error
+  SUCCESS: 0,               // All required pages exported, no disallowed failures, attachment failures below thresholds
+  CONTENT_FAILURE: 1,       // One or more page exports failed (non-restricted) OR attachment failure threshold (FR-006) exceeded
+  INVALID_USAGE: 2,         // Invalid CLI flags / configuration / mutually exclusive options / missing required args
+  INTERRUPTED: 3,           // User issued second SIGINT before graceful drain completed (FR-042)
+  RESUME_REQUIRED: 4,       // Prior interrupted state detected but neither --resume nor --fresh provided (FR-021)
+  VALIDATION_ERROR: 5       // Markdown validation (FR-015) or manifest structural validation unrecoverable
 } as const;
+
+/**
+ * Exit code types for type safety
+ */
+export type ExitCode = typeof EXIT_CODES[keyof typeof EXIT_CODES];
+
+/**
+ * Exit reason categories that map to specific exit codes
+ */
+export interface ExitReason {
+  code: ExitCode;
+  category: 'success' | 'content' | 'usage' | 'interrupt' | 'resume' | 'validation';
+  condition: string;
+  description: string;
+}
 
 /**
  * Default configuration based on typical export requirements
@@ -54,7 +73,7 @@ export const DEFAULT_EXIT_CONFIG: ExitStatusConfig = {
 };
 
 /**
- * Evaluate export results and determine appropriate exit status
+ * Evaluate export results and determine appropriate exit status per FR-019
  */
 export function evaluateExitStatus(
   progress: ExportProgress,
@@ -89,7 +108,7 @@ export function evaluateExitStatus(
   let message: string;
 
   if (worstSeverity === 'error') {
-    exitCode = EXIT_CODES.OPERATIONAL_ERRORS;
+    exitCode = EXIT_CODES.CONTENT_FAILURE;
     category = 'error';
     message = 'Export completed with errors that exceeded acceptable thresholds';
   } else if (worstSeverity === 'warning') {
@@ -118,6 +137,80 @@ export function evaluateExitStatus(
   });
 
   return result;
+}
+
+/**
+ * Determine exit code for specific scenarios per FR-019 specification
+ * This function provides the authoritative mapping for all exit conditions
+ */
+export function determineExitCode(context: {
+  hasContentFailures: boolean;
+  hasAttachmentThresholdExceeded: boolean;
+  hasValidationErrors: boolean;
+  hasConfigurationErrors: boolean;
+  wasInterrupted: boolean;
+  requiresResume: boolean;
+  restrictedPagesSkipped: number;
+}): ExitReason {
+  // FR-019 Exit Code Priority (highest to lowest precedence):
+  
+  // 1. Configuration/Usage errors (highest priority)
+  if (context.hasConfigurationErrors) {
+    return {
+      code: EXIT_CODES.INVALID_USAGE,
+      category: 'usage',
+      condition: 'Invalid CLI flags / configuration / mutually exclusive options / missing required args',
+      description: 'Command line arguments or configuration are invalid'
+    };
+  }
+
+  // 2. Resume requirement
+  if (context.requiresResume) {
+    return {
+      code: EXIT_CODES.RESUME_REQUIRED,
+      category: 'resume',
+      condition: 'Prior interrupted state detected but neither --resume nor --fresh provided (FR-021)',
+      description: 'Export was previously interrupted and requires explicit resume or fresh flag'
+    };
+  }
+
+  // 3. Interruption during processing
+  if (context.wasInterrupted) {
+    return {
+      code: EXIT_CODES.INTERRUPTED,
+      category: 'interrupt',
+      condition: 'User issued second SIGINT before graceful drain completed (FR-042)',
+      description: 'Export was forcibly interrupted by user before graceful shutdown'
+    };
+  }
+
+  // 4. Validation errors
+  if (context.hasValidationErrors) {
+    return {
+      code: EXIT_CODES.VALIDATION_ERROR,
+      category: 'validation',
+      condition: 'Markdown validation (FR-015) or manifest structural validation unrecoverable',
+      description: 'Generated content failed validation checks'
+    };
+  }
+
+  // 5. Content failures (page exports or attachment thresholds)
+  if (context.hasContentFailures || context.hasAttachmentThresholdExceeded) {
+    return {
+      code: EXIT_CODES.CONTENT_FAILURE,
+      category: 'content',
+      condition: 'One or more page exports failed (non-restricted) OR attachment failure threshold (FR-006) exceeded',
+      description: 'Export completed but some content could not be processed'
+    };
+  }
+
+  // 6. Success (default)
+  return {
+    code: EXIT_CODES.SUCCESS,
+    category: 'success',
+    condition: 'All required pages exported, no disallowed failures, attachment failures below thresholds',
+    description: `Export completed successfully. ${context.restrictedPagesSkipped > 0 ? `${context.restrictedPagesSkipped} restricted pages were skipped (allowed).` : ''}`
+  };
 }
 
 /**

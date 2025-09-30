@@ -11,6 +11,9 @@ export interface AtomicWriteOptions {
 
 /**
  * Atomically write content to a file using a temporary file and rename
+ * 
+ * FR-020: Ensures stable output paths and idempotent naming
+ * NFR-003: Provides atomic write operations to prevent corruption
  */
 export async function atomicWriteFile(
   filePath: string,

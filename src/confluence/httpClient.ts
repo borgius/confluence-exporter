@@ -1,3 +1,10 @@
+/**
+ * HTTP client with retry logic and rate limit handling for Confluence API
+ * 
+ * FR-013: Handles rate limits & transient errors using exponential backoff with jitter
+ * FR-013: Honors Retry-After header and provides comprehensive retry policies
+ */
+
 import axios, { type AxiosInstance, type AxiosRequestConfig, type AxiosResponse } from 'axios';
 import { retry, type RetryError } from '../util/retry.js';
 import type { RetryPolicyConfig } from '../models/entities.js';

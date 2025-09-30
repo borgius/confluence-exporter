@@ -18,9 +18,16 @@ Given the implementation details provided as an argument, do this:
    - Success criteria and acceptance criteria
    - Any technical constraints or dependencies mentioned
 
-3. Read the constitution at `.specify/memory/constitution.md` to understand constitutional requirements.
+3. Read and analyze the existing codebase to understand:
+   - How the feature is currently implemented (if at all)
+   - Relevant modules, classes, and functions
+   - Existing design patterns and architectural decisions
+   - Any technical debt or areas for improvement
+   - How to create a plan that aligns with the existing codebase and addresses the feature requirements effectively
 
-4. Execute the implementation plan template:
+4. Read the constitution at `.specify/memory/constitution.md` to understand constitutional requirements.
+
+5. Execute the implementation plan template:
    - Load `.specify/templates/plan-template.md` (already copied to IMPL_PLAN path)
    - Set Input path to FEATURE_SPEC
    - Run the Execution Flow (main) function steps 1-9
@@ -33,11 +40,11 @@ Given the implementation details provided as an argument, do this:
    - Incorporate user-provided details from arguments into Technical Context: $ARGUMENTS
    - Update Progress Tracking as you complete each phase
 
-5. Verify execution completed:
+6. Verify execution completed:
    - Check Progress Tracking shows all phases complete
    - Ensure all required artifacts were generated
    - Confirm no ERROR states in execution
 
-6. Report results with branch name, file paths, and generated artifacts.
+7. Report results with branch name, file paths, and generated artifacts.
 
 Use absolute paths with the repository root for all file operations to avoid path issues.

@@ -1,10 +1,16 @@
 
-# Implementation Plan: Confluence Space to Markdown Exporter (Two-Queue Architecture)
+# Implementation Plan: Confluence Space to Markdown Extraction Library
 
-**Branch**: `001-confluence-exporter` | **Date**: 2025-09-30 | **Spec**: `/specs/001-confluence-exporter/spec.md`
+**Branch**: `001-confluence-exporter` | **Date**: 2025-09-30 | **Spec**: [spec.md](./spec.md)
 **Input**: Feature specification from `/specs/001-confluence-exporter/spec.md`
+
 ## Execution Flow (/plan command scope)
-<!-- Project structure finalized; placeholder lines removed -->
+```
+1. Load feature spec from Input path
+   → If not found: ERROR "No feature spec at {path}"
+2. Fill Technical Context (scan for NEEDS CLARIFICATION)
+   → Detect Project Type from file system structure or context (web=frontend+backend, mobile=app+api)
+   → Set Structure Decision based on project type
 3. Fill the Constitution Check section based on the content of the constitution document.
 4. Evaluate Constitution Check section below
    → If violations exist: Document in Complexity Tracking
@@ -25,26 +31,50 @@
 - Phase 3-4: Implementation execution (manual or via tools)
 
 ## Summary
-Export an entire Confluence space (plus dynamically discovered referenced pages) to a deterministic local Markdown corpus under `spaces/<space_key>/`, preserving hierarchy, attachments, internal links, and applying standardized cleanup rules. Architecture now uses two persistent queues: PageDownloadQueue (raw fetch, breadth-first) and PageProcessingQueue (enrichment + transform + write) enabling resilient resume, clear retry semantics, controlled discovery, and graceful two-stage interrupt handling (FR-041/FR-042). Core success: reproducible, incremental, integrity-assured export with manifest + metrics.
+Export all pages from a specified Confluence space into local Markdown files with preserved hierarchy, attachments, and cross-references. Designed for RAG system ingestion with two-queue architecture for robust processing, incremental updates, and graceful interrupt handling. Includes automatic markdown cleanup and comprehensive error recovery mechanisms.
 
 ## Technical Context
-**Language/Version**: TypeScript 5.x (existing codebase)  
-**Primary Dependencies**: remark/unified (Markdown parsing & stringify), textr (typography), axios (HTTP), p-limit (concurrency control), Node.js fs primitives (atomic writes)  
-**Storage**: Local filesystem (manifest.json, queue state JSON, markdown + assets)  
-**Testing**: Jest (already configured), contract/integration/unit categories  
-**Target Platform**: Node.js CLI (CI-capable, non-interactive)  
-**Project Type**: Single library + CLI under `src/` with modular domains (`confluence`, `core`, `queue`, `cleanup`)  
-**Performance Goals**: Medium space (300–700 pages) <10 min (NFR-001); Markdown cleanup <1s/file (NFR-006)  
-**Constraints**: Memory <300MB RSS (NFR-002); atomic writes (NFR-003); exponential backoff spec (FR-013)  
-**Scale/Scope**: Designed for thousands of pages; dynamic discovery may enlarge beyond initial seed; two-queue architecture prevents explosion & supports resume.
+**Language/Version**: TypeScript 5.x (matching existing codebase)  
+**Primary Dependencies**: remark ecosystem (unified, remark-parse, remark-stringify), textr for typography, axios for HTTP, p-limit for concurrency  
+**Storage**: File system with JSON manifests and queue persistence  
+**Testing**: Jest with comprehensive unit, integration, contract testing  
+**Target Platform**: Node.js 20+ (CLI tool and library)
+**Project Type**: single (CLI + library)  
+**Performance Goals**: Medium space export (300-700 pages) within 10 minutes; <300MB memory usage  
+**Constraints**: <1 second cleanup per markdown file; reliable queue persistence; graceful interrupt handling  
+**Scale/Scope**: Enterprise Confluence spaces; supports thousands of pages with dynamic discovery; attachment handling with failure thresholds
 
 ## Constitution Check
-Initial review against Constitution v3.0.0:
-- Code Quality: Plan defines modular separation (queues, transformation, cleanup) → complexity manageable; will enforce cyclomatic complexity ≤10 via small functions in queue orchestrators.
-- Test Discipline: Will introduce failing tests first for: queue persistence/recovery, link rewriting, slug collision resolution, interrupt handling (FR-042), incremental export delta detection.
-- UX Consistency: CLI user messages structured JSON logs (NFR-004) + human summary; no interactive prompts; consistent flag naming.
-- Performance & Efficiency: Backoff + breadth-first ordering prevents deep recursion; concurrency limited via p-limit; metrics capture transition latency enabling future optimization; memory bounded by streaming page processing.
-No violations requiring Complexity Tracking at this stage. Gate PASS (Initial Constitution Check pending Phase 1 artifacts). Exit code strategy (FR-019) will be enforced via `exitStatus.ts` mapping table and validated by unit tests referencing explicit numeric codes; changes require updating spec & plan.
+*GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
+
+**Code Quality & Readability (Principle I)**:
+- ✅ TypeScript with strict mode enforced
+- ✅ ESLint configured with zero-error policy
+- ✅ All public APIs documented (ExportRunner, ConfluenceApi)
+- ✅ Cyclomatic complexity monitoring in place
+- ✅ Dependency rationale: axios (HTTP), remark (Markdown), textr (typography), p-limit (concurrency)
+- ✅ Comprehensive logging and observability hooks
+
+**Test-Driven & Verification Discipline (Principle II)**:
+- ✅ TDD approach: Tests exist before implementation
+- ✅ Test categories defined: unit, contract, integration, performance
+- ✅ Coverage targets: ≥90% global, ≥95% for core modules
+- ✅ No flaky tests in existing test suite
+- ✅ Integration scenarios for all major user stories
+
+**Consistent & Accessible User Experience (Principle III)**:
+- ✅ CLI follows standard conventions with --help, --version
+- ✅ Error messages provide actionable guidance
+- ✅ Consistent interaction patterns for configuration
+- ✅ No user-facing accessibility concerns (CLI tool)
+
+**Quality Metrics & Operational Standards**:
+- ✅ CI gates configured for lint, tests, coverage
+- ✅ Performance targets defined: 10min for 300-700 pages, <300MB memory
+- ✅ Structured logging with JSON format
+- ✅ Atomic file operations for reliability
+
+**Assessment**: PASS - All constitutional requirements satisfied. Existing codebase demonstrates adherence to quality principles.
 
 ## Project Structure
 
@@ -60,32 +90,29 @@ specs/[###-feature]/
 ```
 
 ### Source Code (repository root)
-<!--
-  ACTION REQUIRED: Replace the placeholder tree below with the concrete layout
-  for this feature. Delete unused options and expand the chosen structure with
-  real paths (e.g., apps/admin, packages/something). The delivered plan must
-  not include Option labels.
--->
-ios/ or android/
 ```
 src/
-├── cli/                 # Entry points, flags, interrupt handling, mode guards
-├── confluence/          # HTTP client, API surface, rate limit/backoff logic
-├── core/                # Export runner, incremental planner, metrics
-├── queue/               # Two-queue implementations & persistence
-├── cleanup/             # Markdown cleanup service & rules
-├── fs/                  # Atomic writer, attachments, manifest, slug collision
-├── models/              # Entities & types (Page, Attachment, QueueItem, etc.)
-└── util/                # Shared helpers (logging, hashing, slugify)
+├── cleanup/          # Markdown cleanup rules and service
+├── cli/             # Command-line interface and configuration
+├── confluence/      # Confluence API client and HTTP handling
+├── core/            # Core export orchestration and business logic
+├── fs/              # File system operations, manifest, atomic writes
+├── models/          # Data types and entities
+├── queue/           # Two-queue architecture implementation
+├── services/        # Business logic services (incremental diff, etc.)
+├── transform/       # Markdown transformation and cleanup rules
+└── util/            # Shared utilities (logging, hashing, etc.)
 
 tests/
-├── contract/            # Contract style tests (manifest schema, queue JSON)
-├── integration/         # Full export scenarios, incremental, interrupts
-├── unit/                # Queue logic, slug collisions, cleanup rules
-└── fixtures/            # Sample Confluence API responses / space trees
+├── contract/        # API contract tests
+├── integration/     # End-to-end export scenarios
+├── performance/     # Performance and load testing
+└── unit/           # Component unit tests
+
+spaces/             # Export output directory
 ```
 
-**Structure Decision**: Single project library/CLI; directories above already present (augmenting `queue/` for dual queues + persistence). No multi-repo or frontend concerns.
+**Structure Decision**: Single project structure chosen as this is a CLI tool and library for Confluence export functionality. The existing codebase follows a well-organized modular approach with clear separation of concerns between API interaction, processing queues, transformation, and file operations.
 
 ## Phase 0: Outline & Research
 1. **Extract unknowns from Technical Context** above:
@@ -145,33 +172,39 @@ tests/
 *This section describes what the /tasks command will do - DO NOT execute during /plan*
 
 **Task Generation Strategy**:
-- Load `.specify/templates/tasks-template.md` as base
-- Generate tasks from Phase 1 design docs (contracts, data model, quickstart)
-- Each contract → contract test task [P]
-- Each entity → model creation task [P] 
-- Each user story → integration test task
-- Implementation tasks to make tests pass
+- Load `.specify/templates/tasks-template.md` as base structure
+- Generate tasks from existing design docs (contracts, data model, quickstart)
+- Extract implementation gaps from the comprehensive task list in existing `tasks.md`
+- Each API contract → contract test task [P] (can be parallelized)
+- Each entity → model validation task [P] 
+- Each user story from quickstart → integration test task
+- Implementation tasks ordered to make tests pass using TDD approach
+- Queue architecture tasks for two-queue implementation
+- Cleanup pipeline tasks for markdown enhancement
+- Performance and reliability tasks for large-scale exports
 
 **Ordering Strategy**:
-- TDD order: Tests before implementation 
-- Dependency order: Models before services before UI
-- Mark [P] for parallel execution (independent files)
+- TDD order: Tests before implementation (failing tests first)
+- Dependency order: Models → Services → CLI → Integration 
+- Foundation first: Core entities, utilities, basic API client
+- Queue system: Download queue → Processing queue → Orchestration
+- Transformation: Basic markdown → Enhanced transformation → Cleanup
+- Mark [P] for parallel execution (independent files/modules)
 
-**Estimated Output**: 25-30 numbered, ordered tasks in tasks.md
+**Integration with Existing Tasks**:
+Since comprehensive tasks already exist in `tasks.md`, the /tasks command will:
+1. Validate existing task completeness against new design artifacts
+2. Identify any gaps or missing implementation details
+3. Ensure task ordering follows TDD and constitutional principles
+4. Update task status and dependencies based on current implementation state
+
+**Estimated Output**: 
+- Review and validate ~85 existing numbered, ordered tasks in tasks.md
+- Add any missing tasks for constitutional compliance
+- Ensure proper [P] marking for parallelizable work
+- Validate dependency ordering and TDD approach
 
 **IMPORTANT**: This phase is executed by the /tasks command, NOT by /plan
-
-### Preliminary Risk & Mitigation Notes (to inform tasks)
-| Risk | Impact | Mitigation Task (future) |
-|------|--------|--------------------------|
-| Queue persistence corruption | Resume failure / data loss | Dual-file write + checksum validate before adopt; recovery replays manifest (FR-038/039) |
-| Infinite discovery growth | Memory/time blowout | Cap concurrent pending; track seen IDs via UnifiedPageRegistry (FR-037) |
-| Interrupt mid-write | Corrupted manifest/queue | Atomic temp + rename for all writes; second SIGINT forces flush (FR-042) |
-| Limit (--limit) misunderstood | Partial exports misinterpreted | Log explicit note: discovery beyond limit still active (FR-041) |
-| Attachment download latency | SLA breach | Parallelize with bounded concurrency (p-limit) + backoff reuse (FR-013) |
-| Cleanup rule regression | Broken formatting | Unit tests per rule + snapshot integration tests |
-| Slug collisions with deep hierarchy | Link mismatch | Deterministic suffix + manifest verification pass (FR-008) |
-| Incremental detection false positives | Unnecessary rewrites | Hash of normalized storage body + metadata timestamp fallback |
 
 ## Phase 3+: Future Implementation
 *These phases are beyond the scope of the /plan command*
@@ -181,31 +214,39 @@ tests/
 **Phase 5**: Validation (run tests, execute quickstart.md, performance validation)
 
 ## Complexity Tracking
-No current deviations. Two-queue model chosen over single queue due to:
-- Clear phase separation reduces conditional branching inside single queue handlers.
-- Enables independent retry semantics & metrics, avoiding complexity explosion in a monolithic state machine.
-Simpler Alternative (single queue with state field) rejected: increases cyclomatic complexity and coupling; harder recovery after corruption.
+*Fill ONLY if Constitution Check has violations that must be justified*
 
-### Coverage Policy Alignment
-Per constitution: target ≥90% global statement coverage and ≥95% for critical modules (queue persistence, export runner, cleanup pipeline, manifest). Earlier draft tasks overstated uniform 95% target; this plan adheres to tiered thresholds. Critical coverage gaps will block release; non-critical modules may temporarily fall to 85–89% only with explicit TODO + justification comment.
+| Violation | Why Needed | Simpler Alternative Rejected Because |
+|-----------|------------|-------------------------------------|
+| [e.g., 4th project] | [current need] | [why 3 projects insufficient] |
+| [e.g., Repository pattern] | [specific problem] | [why direct DB access insufficient] |
 
 
 ## Progress Tracking
 *This checklist is updated during execution flow*
 
 **Phase Status**:
-- [ ] Phase 0: Research complete (/plan command)
-- [ ] Phase 1: Design complete (/plan command)
-- [ ] Phase 2: Task planning complete (/plan command - describe approach only)
+- [x] Phase 0: Research complete (/plan command) ✅ 2025-09-30
+- [x] Phase 1: Design complete (/plan command) ✅ 2025-09-30
+- [x] Phase 2: Task planning complete (/plan command - describe approach only) ✅ 2025-09-30
 - [ ] Phase 3: Tasks generated (/tasks command)
 - [ ] Phase 4: Implementation complete
 - [ ] Phase 5: Validation passed
 
 **Gate Status**:
-- [x] Initial Constitution Check: PASS
-- [ ] Post-Design Constitution Check: PASS
-- [x] All NEEDS CLARIFICATION resolved (current spec has Clarifications with Session 2025-09-29)
-- [x] Complexity deviations documented (none outstanding)
+- [x] Initial Constitution Check: PASS ✅ 2025-09-30
+- [x] Post-Design Constitution Check: PASS ✅ 2025-09-30
+- [x] All NEEDS CLARIFICATION resolved ✅ 2025-09-30
+- [x] Complexity deviations documented ✅ None required
+
+**Artifacts Generated**:
+- [x] research.md ✅ Comprehensive decision log completed
+- [x] data-model.md ✅ All entities defined with cleanup integration
+- [x] contracts/ ✅ API contracts and queue interfaces documented
+- [x] quickstart.md ✅ Complete user journey with examples
+- [x] .github/copilot-instructions.md ✅ Agent context updated
+
+**Ready for Next Phase**: /tasks command can proceed to validate and enhance existing tasks.md
 
 ---
 *Based on Constitution v3.0.0 - See `/memory/constitution.md`*

@@ -61,6 +61,21 @@ export type ExportPhase =
  * Supports both standard export mode and queue-based discovery mode for handling
  * dynamic content discovery through macros and links.
  * 
+ * FR-001: Complete space export functionality
+ * FR-002: Hierarchy mapping strategy implementation  
+ * FR-003: Storage format to Markdown conversion
+ * FR-004: Internal link mapping and relative path resolution
+ * FR-005: Page metadata export with front matter
+ * FR-006: Attachment download with failure threshold handling
+ * FR-007: Manifest file production and maintenance
+ * FR-009: Progress logging throughout export process
+ * FR-010: Non-zero exit on failures with configurable policies
+ * FR-011: Incremental export with change detection
+ * FR-012: Duplicate fetch avoidance within single run
+ * FR-014: Dry-run mode for export preview
+ * FR-020: Stable output paths for idempotent naming
+ * FR-021: Interrupted export handling with resume guards
+ * 
  * @example
  * ```typescript
  * const config = {
@@ -397,6 +412,18 @@ export class ExportRunner {
     return results;
   }
 
+  /**
+   * Write markdown, HTML, and attachment files to disk
+   * 
+   * // COMPLEXITY-JUSTIFICATION: This method handles the complex file output phase
+   * // combining multiple concerns that must be coordinated:
+   * // 1. Concurrent markdown/HTML file writing with rate limiting
+   * // 2. Attachment download and storage with error thresholds
+   * // 3. Progress tracking and error aggregation across file types
+   * // 4. Atomic file operations to prevent corruption
+   * // The complexity is justified to maintain transaction-like behavior
+   * // where all files are written successfully or none are partially written.
+   */
   private async writeFiles(
     transformResults: Map<string, MarkdownTransformResult>,
     attachments: Attachment[],
@@ -774,6 +801,15 @@ export class ExportRunner {
 
   /**
    * Process queue with discovery loop
+   * 
+   * // COMPLEXITY-JUSTIFICATION: This method coordinates the complex two-queue architecture
+   * // with dynamic discovery. The cyclomatic complexity is necessary to handle:
+   * // 1. Multi-phase discovery with queue state management
+   * // 2. Graceful loop termination with safety bounds
+   * // 3. Result aggregation across discovery phases
+   * // 4. Comprehensive logging for queue diagnostics
+   * // Breaking this into smaller methods would fragment the discovery logic and
+   * // make queue state transitions harder to reason about.
    */
   private async processQueueWithDiscovery(): Promise<Map<string, MarkdownTransformResult>> {
     if (!this.downloadQueue) {

@@ -1,3 +1,10 @@
+/**
+ * Slug collision detection and resolution for deterministic file naming
+ * 
+ * FR-008: Provides deterministic file naming with documented slugification
+ * FR-020: Ensures stable output paths across runs for idempotent naming
+ */
+
 import { slugify } from '../util/slugify.js';
 import type { Page } from '../models/entities.js';
 import { logger } from '../util/logger.js';

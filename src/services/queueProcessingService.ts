@@ -229,6 +229,19 @@ export class QueueProcessingService {
   /**
    * Process a single item with retry logic and timeout.
    */
+  /**
+   * Process a single queue item with retry logic and concurrency control
+   * 
+   * // COMPLEXITY-JUSTIFICATION: This method implements the complex retry/timeout/error
+   * // handling logic that is essential for robust queue processing:
+   * // 1. Semaphore-based concurrency control with resource acquisition
+   * // 2. Conditional skipping logic for incremental processing
+   * // 3. Race condition handling between processing and timeout
+   * // 4. Multi-level error classification and retry decision logic
+   * // 5. Queue state transitions coordinated with business logic
+   * // Breaking this apart would scatter retry semantics across multiple methods
+   * // and make the critical path harder to understand and debug.
+   */
   private async processItemWithRetry(
     item: QueueItem,
     context: QueueProcessingContext,

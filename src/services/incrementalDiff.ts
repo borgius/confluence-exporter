@@ -1,3 +1,11 @@
+/**
+ * Incremental export diff computation for detecting changes and deletions
+ * 
+ * FR-011: Implements full incremental export with change detection
+ * FR-012: Avoids duplicate network fetches for already processed pages
+ * FR-018: Provides checksum/hash for exported content change detection (optional MVP)
+ */
+
 import type { ManifestEntry, Page, Attachment } from '../models/entities.js';
 import type { Manifest, ManifestDiff } from '../fs/manifest.js';
 import { diffManifests } from '../fs/manifest.js';

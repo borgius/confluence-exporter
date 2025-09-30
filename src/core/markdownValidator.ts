@@ -33,21 +33,66 @@ function validateFileExtension(filePath: string, result: ValidationResult): void
 }
 
 /**
- * Validates front matter fields
+ * Validates front matter fields per FR-015 complete specification
  */
 function validateFrontMatter(data: Record<string, unknown>, result: ValidationResult): void {
-  const requiredFields = ['title', 'confluenceId', 'confluenceUrl', 'lastModified'];
+  // FR-015: Required front matter keys: title, pageId, sourceUrl, lastModified (ISO 8601), exportTimestamp
+  const requiredFields = ['title', 'pageId', 'sourceUrl', 'lastModified', 'exportTimestamp'];
   const missingFields = requiredFields.filter(field => !data[field]);
   
   if (missingFields.length > 0) {
-    result.errors.push(`Missing required front matter fields: ${missingFields.join(', ')}`);
+    result.errors.push(`Missing required front matter fields per FR-015: ${missingFields.join(', ')}`);
   }
 
-  // Validate field types
-  const stringFields = ['title', 'confluenceId', 'confluenceUrl', 'lastModified'];
+  validateStringFields(data, result);
+  validateTimestampFields(data, result);
+  validateUrlFields(data, result);
+}
+
+/**
+ * Validates string field types and content
+ */
+function validateStringFields(data: Record<string, unknown>, result: ValidationResult): void {
+  const stringFields = ['title', 'pageId', 'sourceUrl'];
   for (const field of stringFields) {
     if (data[field] && typeof data[field] !== 'string') {
       result.errors.push(`Front matter field "${field}" must be a string`);
+    }
+    if (data[field] && (data[field] as string).trim().length === 0) {
+      result.errors.push(`Front matter field "${field}" cannot be empty`);
+    }
+  }
+}
+
+/**
+ * Validates ISO 8601 timestamp fields
+ */
+function validateTimestampFields(data: Record<string, unknown>, result: ValidationResult): void {
+  const timestampFields = ['lastModified', 'exportTimestamp'];
+  for (const field of timestampFields) {
+    if (data[field]) {
+      const value = data[field] as string;
+      if (typeof value !== 'string') {
+        result.errors.push(`Front matter field "${field}" must be an ISO 8601 timestamp string`);
+      } else {
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) {
+          result.errors.push(`Front matter field "${field}" must be a valid ISO 8601 timestamp`);
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Validates URL field formats
+ */
+function validateUrlFields(data: Record<string, unknown>, result: ValidationResult): void {
+  if (data.sourceUrl && typeof data.sourceUrl === 'string') {
+    try {
+      new URL(data.sourceUrl);
+    } catch {
+      result.errors.push('Front matter field "sourceUrl" must be a valid URL');
     }
   }
 }

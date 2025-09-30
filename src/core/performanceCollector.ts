@@ -2,6 +2,10 @@
  * Performance summary and metrics collection
  * Implements T066: Performance summary (timing, throughput, error rates)
  * Enhanced with cleanup metrics for T133: Performance monitoring
+ * 
+ * NFR-001: Supports medium space export completion under 10 minutes
+ * NFR-002: Monitors memory usage to stay under 300MB RSS
+ * NFR-006: Tracks markdown cleanup timing to stay under 1s/file
  */
 
 import { logger } from '../util/logger.js';
