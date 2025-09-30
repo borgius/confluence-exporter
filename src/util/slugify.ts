@@ -1,5 +1,5 @@
 // Escape only necessary characters; avoid unnecessary escapes flagged by ESLint
-const PUNCTUATION_REGEX = /["'`’“”‘.,!?;:()[\]{}<>]/g; // punctuation chars including brackets
+const PUNCTUATION_REGEX = /["'`'""'.,!?;:()[\]{}<>&]/g; // punctuation chars including brackets and ampersand
 const WHITESPACE_REGEX = /\s+/g;
 
 export interface SlugifyOptions {

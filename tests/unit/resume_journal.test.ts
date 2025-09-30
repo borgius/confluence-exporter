@@ -125,6 +125,13 @@ describe('ResumeModeGuard', () => {
         maxDelayMs: 30000,
         jitterRatio: 0.1,
       },
+      cleanup: {
+        enabled: true,
+        intensity: 'medium',
+        lineLength: 92,
+        locale: 'en-us',
+        preserveFormatting: true,
+      },
     });
 
     it('should allow normal mode when no previous state exists', () => {
@@ -222,6 +229,13 @@ describe('ResumeModeGuard', () => {
         baseDelayMs: 1000,
         maxDelayMs: 30000,
         jitterRatio: 0.1,
+      },
+      cleanup: {
+        enabled: true,
+        intensity: 'medium',
+        lineLength: 92,
+        locale: 'en-us',
+        preserveFormatting: true,
       },
     });
 
@@ -372,6 +386,13 @@ describe('ResumeModeGuard', () => {
         baseDelayMs: 1000,
         maxDelayMs: 30000,
         jitterRatio: 0.1,
+      },
+      cleanup: {
+        enabled: true,
+        intensity: 'medium',
+        lineLength: 92,
+        locale: 'en-us',
+        preserveFormatting: true,
       },
     });
 

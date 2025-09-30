@@ -1,4 +1,5 @@
 import { logger } from '../util/logger.js';
+import type { QueueMetrics } from '../models/queueEntities.js';
 
 export interface PerformanceMetrics {
   startTime: Date;
@@ -8,6 +9,7 @@ export interface PerformanceMetrics {
   throughput: ThroughputMetrics;
   errors: ErrorMetrics;
   resources: ResourceMetrics;
+  queue?: QueueStatistics; // Queue performance statistics
 }
 
 export interface PhaseMetrics {
@@ -50,6 +52,25 @@ export interface MemorySnapshot {
   heapTotal: number;
   external: number;
   rss: number;
+}
+
+export interface QueueStatistics {
+  totalQueued: number;
+  totalProcessed: number;
+  totalFailed: number;
+  currentQueueSize: number;
+  discoveryRate: number; // pages discovered per second
+  processingRate: number; // pages processed per second
+  averageRetryCount: number;
+  peakQueueSize: number;
+  queueProcessingTime: number; // total time spent on queue operations
+  discoveryPatterns: DiscoveryPatternSummary[];
+}
+
+export interface DiscoveryPatternSummary {
+  sourceType: string;
+  count: number;
+  percentage: number;
 }
 
 export class MetricsCollector {
@@ -155,6 +176,84 @@ export class MetricsCollector {
     this.metrics.throughput.totalPages += pages;
     this.metrics.throughput.totalAttachments += attachments;
     this.metrics.throughput.totalBytes += bytes;
+  }
+
+  /**
+   * Record queue metrics
+   */
+  recordQueueMetrics(queueMetrics: QueueMetrics): void {
+    if (!this.metrics.queue) {
+      this.metrics.queue = {
+        totalQueued: 0,
+        totalProcessed: 0,
+        totalFailed: 0,
+        currentQueueSize: 0,
+        discoveryRate: 0,
+        processingRate: 0,
+        averageRetryCount: 0,
+        peakQueueSize: 0,
+        queueProcessingTime: 0,
+        discoveryPatterns: [],
+      };
+    }
+
+    // Update queue statistics
+    this.metrics.queue.totalQueued = queueMetrics.totalQueued;
+    this.metrics.queue.totalProcessed = queueMetrics.totalProcessed;
+    this.metrics.queue.totalFailed = queueMetrics.totalFailed;
+    this.metrics.queue.currentQueueSize = queueMetrics.currentQueueSize;
+    this.metrics.queue.discoveryRate = queueMetrics.discoveryRate;
+    this.metrics.queue.processingRate = queueMetrics.processingRate;
+    this.metrics.queue.averageRetryCount = queueMetrics.averageRetryCount;
+
+    // Track peak queue size
+    if (queueMetrics.currentQueueSize > this.metrics.queue.peakQueueSize) {
+      this.metrics.queue.peakQueueSize = queueMetrics.currentQueueSize;
+    }
+  }
+
+  /**
+   * Record queue discovery patterns
+   */
+  recordDiscoveryPatterns(patterns: DiscoveryPatternSummary[]): void {
+    if (!this.metrics.queue) {
+      this.recordQueueMetrics({
+        totalQueued: 0,
+        totalProcessed: 0,
+        totalFailed: 0,
+        currentQueueSize: 0,
+        discoveryRate: 0,
+        processingRate: 0,
+        averageRetryCount: 0,
+        persistenceOperations: 0,
+      });
+    }
+
+    if (this.metrics.queue) {
+      this.metrics.queue.discoveryPatterns = patterns;
+    }
+  }
+
+  /**
+   * Record queue processing time
+   */
+  recordQueueProcessingTime(timeMs: number): void {
+    if (!this.metrics.queue) {
+      this.recordQueueMetrics({
+        totalQueued: 0,
+        totalProcessed: 0,
+        totalFailed: 0,
+        currentQueueSize: 0,
+        discoveryRate: 0,
+        processingRate: 0,
+        averageRetryCount: 0,
+        persistenceOperations: 0,
+      });
+    }
+
+    if (this.metrics.queue) {
+      this.metrics.queue.queueProcessingTime += timeMs;
+    }
   }
 
   /**
@@ -317,9 +416,38 @@ export function formatMetricsSummary(metrics: PerformanceMetrics): string {
   lines.push(`Error Rate: ${metrics.errors.errorRate.toFixed(2)}% (${metrics.errors.totalErrors} errors)`);
   lines.push(`Memory Usage: Peak ${formatBytes(metrics.resources.peakMemoryUsage)}, Avg ${formatBytes(metrics.resources.averageMemoryUsage)}`);
   
+  // Queue statistics (if available)
+  if (metrics.queue) {
+    lines.push('\n=== Queue Performance ===');
+    lines.push(`Total Queued: ${metrics.queue.totalQueued} pages`);
+    lines.push(`Total Processed: ${metrics.queue.totalProcessed} pages`);
+    lines.push(`Total Failed: ${metrics.queue.totalFailed} pages`);
+    lines.push(`Peak Queue Size: ${metrics.queue.peakQueueSize} pages`);
+    lines.push(`Discovery Rate: ${metrics.queue.discoveryRate.toFixed(2)} pages/s`);
+    lines.push(`Processing Rate: ${metrics.queue.processingRate.toFixed(2)} pages/s`);
+    lines.push(`Average Retries: ${metrics.queue.averageRetryCount.toFixed(2)}`);
+    lines.push(`Queue Processing Time: ${(metrics.queue.queueProcessingTime / 1000).toFixed(2)}s`);
+    
+    if (metrics.queue.discoveryPatterns.length > 0) {
+      lines.push('\n=== Discovery Patterns ===');
+      for (const pattern of metrics.queue.discoveryPatterns) {
+        lines.push(`${pattern.sourceType}: ${pattern.count} pages (${pattern.percentage.toFixed(1)}%)`);
+      }
+    }
+  }
+  
   lines.push('\n=== Phase Breakdown ===');
   for (const phase of metrics.phases) {
     lines.push(`${phase.name}: ${(phase.duration / 1000).toFixed(2)}s (${phase.itemsProcessed} items, ${phase.itemsPerSecond.toFixed(2)}/s)`);
+  }
+
+  if (metrics.errors.totalErrors > 0) {
+    lines.push('\n=== Error Breakdown ===');
+    lines.push(`Page Errors: ${metrics.errors.pageErrors}`);
+    lines.push(`Attachment Errors: ${metrics.errors.attachmentErrors}`);
+    lines.push(`Transform Errors: ${metrics.errors.transformErrors}`);
+    lines.push(`Filesystem Errors: ${metrics.errors.filesystemErrors}`);
+    lines.push(`Retryable Errors: ${metrics.errors.retryableErrors}`);
   }
 
   return lines.join('\n');

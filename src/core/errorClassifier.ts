@@ -362,6 +362,48 @@ export class ErrorClassifier {
                /too.+many.+requests/.test(message);
       },
     });
+
+    // Additional network errors
+    this.addPattern({
+      pattern: /fetch failed/i,
+      classification: {
+        category: 'network',
+        severity: 'medium',
+        recoverable: true,
+        retryable: true,
+        userActionRequired: false,
+        description: 'Network request failed',
+        suggestedAction: 'Check network connection and try again',
+        retryStrategy: {
+          maxRetries: 5,
+          baseDelayMs: 2000,
+          backoffMultiplier: 2,
+          maxDelayMs: 30000,
+          jitterMs: 1000,
+        },
+      },
+      matches: (error) => /fetch failed/i.test(error.message),
+    });
+
+    // Authorization errors
+    this.addPattern({
+      pattern: /forbidden|access denied|insufficient permissions/i,
+      classification: {
+        category: 'authorization',
+        severity: 'high',
+        recoverable: false,
+        retryable: false,
+        userActionRequired: true,
+        description: 'Access denied or insufficient permissions',
+        suggestedAction: 'Check user permissions and access rights',
+      },
+      matches: (error) => {
+        const message = error.message.toLowerCase();
+        return message.includes('forbidden') ||
+               message.includes('access denied') ||
+               message.includes('insufficient permissions');
+      },
+    });
   }
 
   private classifyByProperties(error: Error, context?: ErrorContext): ErrorClassification {

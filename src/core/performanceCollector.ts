@@ -1,9 +1,21 @@
 /**
  * Performance summary and metrics collection
  * Implements T066: Performance summary (timing, throughput, error rates)
+ * Enhanced with cleanup metrics for T133: Performance monitoring
  */
 
 import { logger } from '../util/logger.js';
+
+export interface RulePerformanceMetrics {
+  ruleName: string;
+  executionCount: number;
+  totalExecutionTime: number;
+  averageExecutionTime: number;
+  successCount: number;
+  failureCount: number;
+  fastestExecution: number;
+  slowestExecution: number;
+}
 
 export interface PerformanceMetrics {
   timing: {
@@ -41,6 +53,13 @@ export interface PerformanceMetrics {
     maxConcurrency: number;
     avgConcurrency: number;
     concurrencyHistory: number[];
+  };
+  cleanup: {
+    rulesPerformance: Map<string, RulePerformanceMetrics>;
+    totalCleanupTime: number;
+    filesProcessed: number;
+    rulesExecuted: number;
+    failedRules: number;
   };
 }
 
@@ -363,6 +382,13 @@ export class PerformanceCollector {
         avgConcurrency: 0,
         concurrencyHistory: [],
       },
+      cleanup: {
+        rulesPerformance: new Map(),
+        totalCleanupTime: 0,
+        filesProcessed: 0,
+        rulesExecuted: 0,
+        failedRules: 0,
+      },
     };
   }
 
@@ -574,6 +600,97 @@ export class PerformanceCollector {
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     
     return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
+  }
+
+  /**
+   * Records cleanup rule performance metrics
+   * Implements T133: Performance monitoring for cleanup operations
+   */
+  recordRulePerformance(
+    ruleName: string,
+    executionTime: number,
+    success: boolean
+  ): void {
+    let ruleMetrics = this.metrics.cleanup.rulesPerformance.get(ruleName);
+    
+    if (!ruleMetrics) {
+      ruleMetrics = {
+        ruleName,
+        executionCount: 0,
+        totalExecutionTime: 0,
+        averageExecutionTime: 0,
+        successCount: 0,
+        failureCount: 0,
+        fastestExecution: Infinity,
+        slowestExecution: 0,
+      };
+      this.metrics.cleanup.rulesPerformance.set(ruleName, ruleMetrics);
+    }
+
+    // Update metrics
+    ruleMetrics.executionCount++;
+    ruleMetrics.totalExecutionTime += executionTime;
+    ruleMetrics.averageExecutionTime = ruleMetrics.totalExecutionTime / ruleMetrics.executionCount;
+    
+    if (success) {
+      ruleMetrics.successCount++;
+    } else {
+      ruleMetrics.failureCount++;
+      this.metrics.cleanup.failedRules++;
+    }
+    
+    ruleMetrics.fastestExecution = Math.min(ruleMetrics.fastestExecution, executionTime);
+    ruleMetrics.slowestExecution = Math.max(ruleMetrics.slowestExecution, executionTime);
+    
+    this.metrics.cleanup.rulesExecuted++;
+  }
+
+  /**
+   * Records cleanup file processing metrics
+   */
+  recordCleanupFile(processingTime: number): void {
+    this.metrics.cleanup.filesProcessed++;
+    this.metrics.cleanup.totalCleanupTime += processingTime;
+  }
+
+  /**
+   * Gets cleanup performance summary
+   */
+  getCleanupSummary(): {
+    averageFileProcessingTime: number;
+    totalRulesExecuted: number;
+    ruleSuccessRate: number;
+    slowestRule: string | null;
+    fastestRule: string | null;
+  } {
+    const rulesCount = this.metrics.cleanup.rulesExecuted;
+    const successfulRules = rulesCount - this.metrics.cleanup.failedRules;
+    
+    let slowestRule: string | null = null;
+    let fastestRule: string | null = null;
+    let maxTime = 0;
+    let minTime = Infinity;
+
+    for (const [ruleName, metrics] of this.metrics.cleanup.rulesPerformance) {
+      if (metrics.averageExecutionTime > maxTime) {
+        maxTime = metrics.averageExecutionTime;
+        slowestRule = ruleName;
+      }
+      if (metrics.averageExecutionTime < minTime) {
+        minTime = metrics.averageExecutionTime;
+        fastestRule = ruleName;
+      }
+    }
+
+    return {
+      averageFileProcessingTime: this.metrics.cleanup.filesProcessed > 0 
+        ? this.metrics.cleanup.totalCleanupTime / this.metrics.cleanup.filesProcessed 
+        : 0,
+      totalRulesExecuted: rulesCount,
+      ruleSuccessRate: rulesCount > 0 ? (successfulRules / rulesCount) * 100 : 100,
+      slowestRule,
+      fastestRule,
+    };
   }
 }
 

@@ -1,4 +1,5 @@
 // Core domain & DTO interfaces
+import type { CleanupConfig } from './markdownCleanup.js';
 
 export interface Space {
   id: string;
@@ -89,6 +90,7 @@ export interface ExportConfig {
   password: string;
   baseUrl: string; // Confluence base URL (e.g., https://your-domain.atlassian.net/wiki)
   retry: RetryPolicyConfig;
+  cleanup: CleanupConfig;
 }
 
 export interface ExportJob {

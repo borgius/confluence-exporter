@@ -257,7 +257,11 @@ export class MarkdownTransformer {
 
       // Extract page ID from internal links
       if (linkInfo.isInternal) {
-        const pageIdMatch = href.match(/\/pages\/(\d+)/);
+        // Handle both direct page URLs and viewpage.action URLs
+        let pageIdMatch = href.match(/\/pages\/(\d+)/);
+        if (!pageIdMatch) {
+          pageIdMatch = href.match(/pageId=([^&#]*)/);
+        }
         if (pageIdMatch) {
           linkInfo.pageId = pageIdMatch[1];
         }

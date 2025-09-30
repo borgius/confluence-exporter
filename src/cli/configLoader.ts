@@ -22,6 +22,8 @@ export interface CLIOptions {
   logLevel: string;
   config?: string;
   attachmentThreshold: string;
+  cleanupIntensity: string;
+  cleanupDisable: boolean;
 }
 
 /**
@@ -55,6 +57,8 @@ function parseCliOptions(options: CLIOptions): CliFlags {
     fresh: options.fresh,
     rootPageId: options.root,
     logLevel: options.logLevel,
+    cleanupIntensity: options.cleanupIntensity,
+    cleanupDisable: options.cleanupDisable,
   };
 }
 

@@ -1,4 +1,6 @@
 import type { ExportConfig, RetryPolicyConfig } from '../models/entities.js';
+import type { CleanupConfig, CleanupIntensity } from '../models/markdownCleanup.js';
+import { DEFAULT_CLEANUP_CONFIGS } from '../models/markdownCleanup.js';
 import { config as loadDotenv } from 'dotenv';
 
 // Load .env file if it exists
@@ -21,6 +23,8 @@ export interface CliFlags {
   fresh?: boolean;
   rootPageId?: string;
   logLevel?: string;
+  cleanupIntensity?: string;
+  cleanupDisable?: boolean;
 }
 
 const DEFAULT_RETRY: RetryPolicyConfig = {
@@ -68,15 +72,47 @@ function parseProcessingOptions(flags: CliFlags, env: RawEnv): { concurrency: nu
   return { concurrency, limit, logLevel };
 }
 
+function parseCleanupOptions(flags: CliFlags): CleanupConfig {
+  if (flags.cleanupDisable) {
+    return {
+      enabled: false,
+      intensity: 'light',
+      lineLength: 92,
+      locale: 'en-us',
+      preserveFormatting: true,
+    };
+  }
+
+  const intensity = (flags.cleanupIntensity || 'medium') as CleanupIntensity;
+  const validIntensities = ['light', 'medium', 'heavy'];
+  if (!validIntensities.includes(intensity)) {
+    throw new Error(`Invalid cleanup intensity: ${intensity}. Must be one of: ${validIntensities.join(', ')}`);
+  }
+
+  // Get base config for the intensity level
+  const baseConfig = DEFAULT_CLEANUP_CONFIGS[intensity];
+  
+  return {
+    enabled: true,
+    intensity,
+    lineLength: 92,
+    locale: 'en-us',
+    preserveFormatting: baseConfig.preserveFormatting ?? true,
+    rules: baseConfig.rules,
+  };
+}
+
 export function buildConfig(env: RawEnv, flags: CliFlags): ExportConfig {
   const credentials = validateCredentials(env, flags);
   const operationFlags = parseOperationFlags(flags);
   const processingOptions = parseProcessingOptions(flags, env);
+  const cleanup = parseCleanupOptions(flags);
 
   return {
     ...credentials,
     ...operationFlags,
     ...processingOptions,
+    cleanup,
     outputDir: flags.outDir || 'spaces',
     rootPageId: flags.rootPageId,
     retry: DEFAULT_RETRY // could make configurable later

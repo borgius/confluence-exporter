@@ -32,12 +32,11 @@ export class AttachmentRewriter {
       const rewriteResult = this.rewriteAttachment(attachment, sourcePagePath);
       
       if (rewriteResult.newPath) {
-        // Replace in content - look for image references with this filename
-        const pattern = new RegExp(
-          `!\\[([^\\]]*)\\]\\(${this.escapeRegExp(attachment.fileName)}\\)`,
-          'g'
-        );
-        result = result.replace(pattern, `![$1](${rewriteResult.newPath})`);
+        // Replace originalSrc URL with new path in content
+        const escapedOriginalSrc = this.escapeRegExp(attachment.originalSrc);
+        // Pattern that captures markdown link/image syntax with optional title
+        const pattern = new RegExp(`(\\[([^\\]]*)\\]\\(|!\\[([^\\]]*)\\]\\()${escapedOriginalSrc}(\\s*"[^"]*")?\\)`, 'g');
+        result = result.replace(pattern, `$1${rewriteResult.newPath}$4)`);
       } else {
         // Attachment not found or not downloaded
         unresolvedAttachments.push(attachment);

@@ -85,6 +85,8 @@ program
   .option('--log-level <level>', 'Log level: error, warn, info, debug', 'info')
   .option('--config <file>', 'Configuration file path (optional)')
   .option('--attachment-threshold <percent>', 'Attachment failure threshold percentage', '20')
+  .option('--cleanup-intensity <level>', 'Markdown cleanup intensity: light, medium, heavy', 'medium')
+  .option('--cleanup-disable', 'Disable automatic markdown cleanup post-processing', false)
   .action(handleExportAction);
 
 // Handle unknown commands

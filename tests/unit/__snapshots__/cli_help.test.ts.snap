@@ -2,7 +2,7 @@
 
 exports[`CLI Help Output Main Help Output should display main help with all commands and options: main-help-output 1`] = `
 "[999D[K  [2mconsole.log[22m
-    [dotenv@17.2.2] injecting env (5) from .env [2m-- tip: ⚙️  write to custom object with { processEnv: myObject }[0m
+    [dotenv@17.2.2] injecting env (5) from .env [2m-- tip: 🔐 prevent committing .env to code: https://dotenvx.com/precommit[0m
 [2m[22m
 [2m      [2mat _log ([22m[2mnode_modules/dotenv/lib/main.js[2m:139:11)[22m[2m[22m
 
@@ -12,8 +12,7 @@ exports[`CLI Help Output Main Help Output should display main help with all comm
 exports[`CLI Help Output Snapshot Consistency should maintain consistent help output format: normalized-help-output 1`] = `
 "Usage: confluence-exporter [options]
 
-Export Confluence space to Markdown files with hierarchy
-preservation
+Export Confluence space to Markdown files with hierarchy preservation
 
 Options:
   -V, --version                     output the version number
@@ -28,6 +27,8 @@ Options:
   --log-level <level>               Log level: error, warn, info, debug (default: "info")
   --config <file>                   Configuration file path (optional)
   --attachment-threshold <percent>  Attachment failure threshold percentage (default: "20")
+  --cleanup-intensity <level>       Markdown cleanup intensity: light, medium, heavy (default: "medium")
+  --cleanup-disable                 Disable automatic markdown cleanup post-processing (default: false)
   -h, --help                        display help for command
 "
 `;

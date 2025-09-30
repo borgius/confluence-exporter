@@ -189,20 +189,20 @@
 - [x] T130 Integrate cleanup service into existing export pipeline (src/core/exportRunner.ts) (update to include automatic cleanup post-processing).
 - [x] T131 Integrate queue processing into export pipeline (src/core/exportRunner.ts) (queue initialization, processing loop, state persistence) (implements FR-033, FR-034, FR-036).
 - [x] T131a [P] Implement queue-aware export orchestration (src/core/queueAwareExporter.ts) (manages discovery and processing cycles).
-- [ ] T131b [P] Implement export resume with queue state restoration (src/core/resumeWithQueue.ts) (handles interrupted exports with queue). [COMPLETED ✓]
-- [ ] T131c [P] Implement queue progress reporting integration (src/core/queueProgressReporter.ts) (reports queue status in export progress). [COMPLETED ✓]
-- [ ] T132 Error handling and partial cleanup strategy across all cleanup rules.
-- [ ] T133 Performance monitoring and metrics collection for <1s cleanup target.
-- [ ] T134 Logging infrastructure for cleanup rule success/failure tracking.
-- [ ] T135 Configuration management for cleanup intensity levels (light/medium/heavy).
-- [ ] T136 CLI integration for cleanup options (--cleanup-intensity, --cleanup-disable).
-- [ ] T137 Queue corruption detection and recovery mechanisms (src/queue/queueRecovery.ts) (implements FR-039). [COMPLETED ✓]
-- [ ] T138: Queue size monitoring and alerting thresholds [COMPLETED ✓] (src/queue/queueMonitoring.ts) (supports FR-040).
-- [ ] T138a [P] Implement queue performance optimization strategies (src/queue/queueOptimizer.ts) (memory and processing optimizations).
-- [ ] T138b [P] Implement queue analytics and reporting (src/queue/queueAnalytics.ts) (detailed queue statistics and trends).
-- [ ] T138c [P] Implement queue backup and restore functionality (src/queue/queueBackup.ts) (emergency queue state management).
-- [ ] T139 Implement performance summary output block with queue statistics (src/core/metrics.ts) (including cleanup and queue statistics) (implements FR-040).
-- [ ] T140 Implement structured error classification including queue errors (src/core/errorClassifier.ts) (network vs content vs permission vs cleanup vs queue). [COMPLETED ✓]
+- [x] T131b [P] Implement export resume with queue state restoration (src/core/resumeWithQueue.ts) (handles interrupted exports with queue). [COMPLETED ✓]
+- [x] T131c [P] Implement queue progress reporting integration (src/core/queueProgressReporter.ts) (reports queue status in export progress). [COMPLETED ✓]
+- [x] T132 Error handling and partial cleanup strategy across all cleanup rules.
+- [x] T133 Performance monitoring and metrics collection for <1s cleanup target.
+- [x] T134 Logging infrastructure for cleanup rule success/failure tracking.
+- [x] T135 Configuration management for cleanup intensity levels (light/medium/heavy).
+- [x] T136 CLI integration for cleanup options (--cleanup-intensity, --cleanup-disable).
+- [x] T137 Queue corruption detection and recovery mechanisms (src/queue/queueRecovery.ts) (implements FR-039). [COMPLETED ✓]
+- [x] T138: Queue size monitoring and alerting thresholds [COMPLETED ✓] (src/queue/queueMonitoring.ts) (supports FR-040).
+- [x] T138a [P] Implement queue performance optimization strategies (src/queue/queueOptimizer.ts) (memory and processing optimizations).
+- [x] T138b [P] Implement queue analytics and reporting (src/queue/queueAnalytics.ts) (detailed queue statistics and trends).
+- [x] T138c [P] Implement queue backup and restore functionality (src/queue/queueBackup.ts) (emergency queue state management).
+- [x] T139 Implement performance summary output block with queue statistics (src/core/metrics.ts) (including cleanup and queue statistics) (implements FR-040).
+- [x] T140 Implement structured error classification including queue errors (src/core/errorClassifier.ts) (network vs content vs permission vs cleanup vs queue). [COMPLETED ✓]
 
 ## Phase 3.5: Polish & Validation
 - [ ] T141 [P] Add additional unit tests for error utilities (tests/unit/errors.test.ts).
