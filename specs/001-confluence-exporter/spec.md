@@ -73,6 +73,7 @@ As a developer or knowledge engineer, I want to fetch all pages from a given Con
 - **FR-016**: System MUST support configuration of space identifier input (space key vs name) while internally resolving canonical key.
 - **FR-017**: System MUST allow filtering by root page to limit scope (included in MVP for focused exports).
 - **FR-018**: System SHOULD provide checksum or hash for exported content to detect changes externally (future RAG pipeline integration) — optional in MVP, deferred to post-MVP.
+- **FR-019**: System MUST provide a deterministic exit code mapping so automation/CI can distinguish outcomes without parsing logs (see Exit Codes section). At minimum: success, content failures (including attachment threshold breach), invalid usage/config, interrupted (graceful abort on second SIGINT), and resume-required state MUST be uniquely identifiable.
 - **FR-020**: System MUST produce output path stable across runs (idempotent naming) to facilitate downstream indexing.
  - **FR-021**: After a previously interrupted export is detected (presence of partial manifest / temp markers), the tool MUST require an explicit `--resume` or `--fresh` flag; default (no flag) MUST abort with clear guidance. `--resume` processes only missing/failed pages reusing valid artifacts; `--fresh` discards temp state and re-exports all pages.
 
@@ -102,6 +103,7 @@ The system now distinguishes two coordinated queues:
 - **FR-038**: System MUST persist queue state in structured JSON including (for each item): pageId, queueType (download|processing), discoverySource (initial|macro|reference|retry), discoveryTimestamp, retries, status (pending|in-progress|completed|failed), lastTransitionTimestamp, and (if processing queue) contentHash (post-transformation) and outputPath once written.
 - **FR-039**: System MUST handle persistence write failures for either queue gracefully by logging a warning and retaining in-memory state, retrying persistence opportunistically; a detected on-disk corruption MUST trigger recovery that merges intact records and avoids data loss (ties into corruption detection/recovery tasks referenced earlier T137/T085).
 - **FR-040**: System MUST emit per-queue and cross-queue metrics: downloadQueue { pending, inProgress, completed, failed, discoveredThisRun }, processingQueue { pending, inProgress, completed, failed }, plus avgTransitionLatency (discovery → written) and cumulative newlyDiscovered count; these feed progress logging and final manifest stats.
+ - **FR-040**: System MUST emit per-queue and cross-queue metrics: downloadQueue { pending, inProgress, completed, failed, discoveredThisRun }, processingQueue { pending, inProgress, completed, failed }, plus avgTransitionLatency (mean time from initial discovery enqueue → final successful write), cumulative newlyDiscovered count (total unique pages added to download queue this run), and transitionThroughput (completed transitions per unit time) to feed progress logging and final manifest stats.
 
 ### Queue Control & Interrupt Handling
 - **FR-041**: The `--limit <N>` CLI option MUST cap only the initial seeding size of the PageDownloadQueue (first wave of root/space pages). Dynamically discovered pages (links, macros, mentions) MUST still be enqueued beyond this limit. The limit MUST NOT directly constrain the PageProcessingQueue.
@@ -123,6 +125,65 @@ The export lifecycle is explicitly split into two queues to improve resilience, 
 This separation enables: (a) clearer retry semantics (network/raw fetch vs transformation failures), (b) staged persistence for resume, (c) breadth-first exploration that can overlap with deeper processing, and (d) precise metrics for transition latency and bottleneck analysis. The UnifiedPageRegistry prevents duplicate traversal while still allowing failed stages to re-enter at the correct point.
 
 Graceful Interrupt Flow: A first Ctrl-C transitions the system into a quiescing mode: the PageDownloadQueue is frozen (no new seeds or discoveries accepted) while the PageProcessingQueue continues until empty or forcibly aborted. A second Ctrl-C forces an immediate flush of in-memory queue/manifest state to disk and exits. This two-stage termination ensures partial progress is safely captured without risking corruption while still offering fast abort if the user insists.
+
+### Exit Codes (FR-019)
+| Exit Code | Name | Trigger Conditions |
+|-----------|------|--------------------|
+| 0 | SUCCESS | All required pages exported, no disallowed failures, attachment failures below thresholds |
+| 1 | CONTENT_FAILURE | One or more page exports failed (non-restricted) OR attachment failure threshold (FR-006) exceeded |
+| 2 | INVALID_USAGE | Invalid CLI flags / configuration / mutually exclusive options / missing required args |
+| 3 | INTERRUPTED | User issued second SIGINT before graceful drain completed (FR-042) |
+| 4 | RESUME_REQUIRED | Prior interrupted state detected but neither --resume nor --fresh provided (FR-021) |
+| 5 | VALIDATION_ERROR | Markdown validation (FR-015) or manifest structural validation unrecoverable |
+
+Notes:
+- Restricted pages skipped do NOT trigger CONTENT_FAILURE unless policy changes via future flag.
+- Additional codes MAY be added post-MVP; existing codes are stable.
+- FR-010 references code 1 conditions; FR-021 references code 4; FR-042 references code 3.
+
+### Clarifications & Precisions
+
+#### FR-006 Attachment Failure Threshold
+- Percentage denominator: total attempted attachment downloads (success + failure) excluding attachments skipped due to permission (those are logged separately and not counted as failures).
+- Evaluation timing: threshold applied continuously after each failure; early abort allowed once either 20% OR 25 absolute failures reached (whichever first). Final summary MUST state counts and which condition triggered (if any).
+
+#### FR-013 Backoff / Jitter Model
+- Base schedule (pre-jitter): 0.5s, 1s, 2s, 4s, 8s, 16s.
+- Jitter: multiply each base delay by a random factor uniformly sampled in [1.0, 1.5]; resulting practical ranges match documented (e.g., 0.5–0.75s, 1–1.5s, ... 16–24s).
+- If `Retry-After` header present on any retryable response: first retry delay = min(headerValueSeconds, 30). Subsequent retries revert to exponential sequence (still honoring jitter) unless another Retry-After appears.
+- Retry budget: max 6 attempts (initial + 5 retries) unless explicitly extended later; after final failure classify error for exit status logic (FR-010 / FR-019 mapping).
+
+#### FR-040 Metrics Definitions
+- avgTransitionLatency: arithmetic mean over all pages successfully written: (writeTimestamp - discoveryEnqueueTimestamp).
+- discoveredThisRun: count of unique page IDs first seen in this execution (excludes pages only revalidated by incremental planner).
+- transitionThroughput: rolling rate (#successful transitions from download→processing per 30s window) MAY be logged but is optional in manifest summary.
+- pending counts exclude in-progress items; failed counts accumulate until run end (do not decrement on retry requeue – retries create a new attempt but original failure still logged separately in error metrics).
+
+#### Cleanup Intensity Mapping (FR-029)
+| Intensity | Included Rules |
+|-----------|----------------|
+| light | Minimal artifact removal (FR-025 subset), heading normalization (FR-023), typography (FR-022) |
+| standard | light + word wrap (FR-024), footnote reposition (FR-027), boldface punctuation (FR-026) |
+| heavy (default) | standard + full artifact cleanup (all FR-025 patterns) + aggressive whitespace normalization (implementation detail) |
+
+Users selecting `--cleanup-intensity=light` or `standard` MUST still receive structure-preserving guarantees (FR-030). Disabling cleanup (`--disable-cleanup`) bypasses all rules except mandatory safety steps (e.g., front matter preservation).
+
+#### Admonition / Panel Handling
+- Confluence panels / admonitions are rendered into block quotes with a standardized prefix (e.g., `> **Note:**`) — they are NOT altered by typography rules beyond general punctuation normalization.
+- Cleanup rules must not strip semantic labels (Note, Warning, Info) if present.
+
+#### Markdown Validation Scope (FR-015)
+- Required front matter keys: title, pageId, sourceUrl, lastModified (ISO 8601), exportTimestamp.
+- Empty or malformed required fields trigger VALIDATION_ERROR (exit 5) unless `--allow-failures` is set, in which case they count toward CONTENT_FAILURE conditions instead.
+
+#### Resume Guard (FR-021) Interaction
+- On detecting interrupted artifacts, absence of explicit mode sets exit code 4 with clear guidance to rerun using `--resume` or `--fresh`.
+
+#### Duplicate Fetch Prevention (FR-012)
+- UnifiedPageRegistry MUST guarantee at-most-once raw fetch per page per run unless a prior attempt failed before any body content was received; in that case a retry is permitted and does not violate dedupe semantics.
+
+#### Metrics Emission Reliability
+- Metrics logging SHOULD NOT abort export if emission fails; log at WARN and continue (ties to resilience principle).
 
 ### Key Entities
 - **Space**: Logical grouping of pages; attributes: key, name, base URL.

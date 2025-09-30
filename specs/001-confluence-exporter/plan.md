@@ -3,14 +3,8 @@
 
 **Branch**: `001-confluence-exporter` | **Date**: 2025-09-30 | **Spec**: `/specs/001-confluence-exporter/spec.md`
 **Input**: Feature specification from `/specs/001-confluence-exporter/spec.md`
-
 ## Execution Flow (/plan command scope)
-```
-1. Load feature spec from Input path
-   → If not found: ERROR "No feature spec at {path}"
-2. Fill Technical Context (scan for NEEDS CLARIFICATION)
-   → Detect Project Type from file system structure or context (web=frontend+backend, mobile=app+api)
-   → Set Structure Decision based on project type
+<!-- Project structure finalized; placeholder lines removed -->
 3. Fill the Constitution Check section based on the content of the constitution document.
 4. Evaluate Constitution Check section below
    → If violations exist: Document in Complexity Tracking
@@ -50,7 +44,7 @@ Initial review against Constitution v3.0.0:
 - Test Discipline: Will introduce failing tests first for: queue persistence/recovery, link rewriting, slug collision resolution, interrupt handling (FR-042), incremental export delta detection.
 - UX Consistency: CLI user messages structured JSON logs (NFR-004) + human summary; no interactive prompts; consistent flag naming.
 - Performance & Efficiency: Backoff + breadth-first ordering prevents deep recursion; concurrency limited via p-limit; metrics capture transition latency enabling future optimization; memory bounded by streaming page processing.
-No violations requiring Complexity Tracking at this stage. Gate PASS (Initial Constitution Check pending Phase 1 artifacts).
+No violations requiring Complexity Tracking at this stage. Gate PASS (Initial Constitution Check pending Phase 1 artifacts). Exit code strategy (FR-019) will be enforced via `exitStatus.ts` mapping table and validated by unit tests referencing explicit numeric codes; changes require updating spec & plan.
 
 ## Project Structure
 
@@ -191,6 +185,9 @@ No current deviations. Two-queue model chosen over single queue due to:
 - Clear phase separation reduces conditional branching inside single queue handlers.
 - Enables independent retry semantics & metrics, avoiding complexity explosion in a monolithic state machine.
 Simpler Alternative (single queue with state field) rejected: increases cyclomatic complexity and coupling; harder recovery after corruption.
+
+### Coverage Policy Alignment
+Per constitution: target ≥90% global statement coverage and ≥95% for critical modules (queue persistence, export runner, cleanup pipeline, manifest). Earlier draft tasks overstated uniform 95% target; this plan adheres to tiered thresholds. Critical coverage gaps will block release; non-critical modules may temporarily fall to 85–89% only with explicit TODO + justification comment.
 
 
 ## Progress Tracking
