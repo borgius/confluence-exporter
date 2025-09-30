@@ -1,192 +1,66 @@
-/**import { EnhancedMarkdownTransformer, type IMarkdownTransformer } from '../../src/transform/enhancedMarkdownTransformer.js';import { EnhancedMarkdownTransformer, type IMarkdownTransformer } from '../../src/transform/enhancedMarkdownTransformer.js';
-
- * Unit tests for enhanced markdown transformer
-
- */import type { Page } from '../../src/models/entities.js';import type { ConfluenceApi } from '../../src/confluence/api.js';
-
-
-
-import { EnhancedMarkdownTransformer, type IMarkdownTransformer } from '../../src/transform/enhancedMarkdownTransformer.js';import type { TransformContext, MarkdownTransformResult } from '../../src/transform/markdownTransformer.js';import type { Page } from '../../src/models/entities.js';
-
+import { EnhancedMarkdownTransformer, type IMarkdownTransformer } from '../../src/transform/enhancedMarkdownTransformer.js';
+import type { ConfluenceApi } from '../../src/confluence/api.js';
 import type { Page } from '../../src/models/entities.js';
+import type { TransformContext, MarkdownTransformResult } from '../../src/transform/markdownTransformer.js';
 
-import type { TransformContext, MarkdownTransformResult } from '../../src/transform/markdownTransformer.js';import type { TransformContext, MarkdownTransformResult } from '../../src/transform/markdownTransformer.js';
+// Mock ConfluenceApi
+const mockApi = {
+  getChildPages: jest.fn(),
+  getUser: jest.fn(),
+  getUserByUsername: jest.fn()
+} as unknown as ConfluenceApi;
 
-
-
-// Mock base transformer// Mock base transformer
-
+// Mock base transformer
 const mockBaseTransformer: IMarkdownTransformer = {
-
-  async transform(_page: Page, _context: TransformContext): Promise<MarkdownTransformResult> {const mockBaseTransformer: IMarkdownTransformer = {// Mock ConfluenceApi
-
+  async transform(page: Page, context: TransformContext): Promise<MarkdownTransformResult> {
     return {
-
-      content: 'Transformed content',  async transform(_page: Page, _context: TransformContext): Promise<MarkdownTransformResult> {const mockApi = {
-
-      frontMatter: { title: 'Test Page' },
-
-      links: [],    return {  getChildPages: jest.fn(),
-
+      content: page.bodyStorage || '',
+      frontMatter: { title: page.title },
+      links: [],
       attachments: [],
-
-      users: [],      content: 'Transformed content',  getUser: jest.fn(),
-
+      users: [],
       macroExpansions: [],
-
-      discoveredPageIds: []      frontMatter: { title: 'Test Page' },  getUserByUsername: jest.fn()
-
+      discoveredPageIds: []
     };
-
-  }      links: [],} as unknown as ConfluenceApi;
-
+  }
 };
 
-      attachments: [],
-
-describe('EnhancedMarkdownTransformer', () => {
-
-  let transformer: EnhancedMarkdownTransformer;      users: [],// Mock base transformer
-
+describe('EnhancedMarkdownTransformer - API-driven Macro Expansion', () => {
+  let transformer: EnhancedMarkdownTransformer;
   let context: TransformContext;
 
-      macroExpansions: [],const mockBaseTransformer: IMarkdownTransformer = {
-
   beforeEach(() => {
-
-    transformer = new EnhancedMarkdownTransformer(mockBaseTransformer);      discoveredPageIds: []  async transform(page: Page, context: TransformContext): Promise<MarkdownTransformResult> {
-
+    transformer = new EnhancedMarkdownTransformer(mockBaseTransformer);
     context = {
-
-      currentPageId: 'test-page-id',    };    return {
-
+      currentPageId: 'test-page-id',
       spaceKey: 'TEST',
-
-      baseUrl: 'https://confluence.example.com'  }      content: page.bodyStorage || '',
-
+      baseUrl: 'https://confluence.example.com',
+      api: mockApi
     };
-
-  });};      frontMatter: { title: page.title },
-
-
-
-  it('should transform page with enhanced features', async () => {      links: [],
-
-    const page: Page = {
-
-      id: 'test-page-id',describe('EnhancedMarkdownTransformer - Basic Functionality', () => {      attachments: [],
-
-      title: 'Test Page',
-
-      bodyStorage: '<p>Test content</p>',  let transformer: EnhancedMarkdownTransformer;      users: [],
-
-      version: 1,
-
-      space: { key: 'TEST' },  let context: TransformContext;      macroExpansions: [],
-
-      ancestors: [],
-
-      children: { page: { results: [] } }      discoveredPageIds: []
-
-    };
-
-  beforeEach(() => {    };
-
-    const result = await transformer.transform(page, context);
-
-    transformer = new EnhancedMarkdownTransformer(mockBaseTransformer);  }
-
-    expect(result.content).toBe('Transformed content');
-
-    expect(result.frontMatter.title).toBe('Test Page');    context = {};
-
-    expect(result.discoveryResult).toBeDefined();
-
-    expect(result.metrics).toBeDefined();      currentPageId: 'test-page-id',
-
+    
+    // Reset mocks
+    jest.clearAllMocks();
   });
 
-      spaceKey: 'TEST',describe('EnhancedMarkdownTransformer - API-driven Macro Expansion', () => {
-
-  it('should check configuration methods', () => {
-
-    expect(transformer.isCleanupEnabled()).toBe(true);      baseUrl: 'https://confluence.example.com'  let transformer: EnhancedMarkdownTransformer;
-
-    expect(transformer.isQueueDiscoveryEnabled()).toBe(true);
-
-        };  let context: TransformContext;
-
-    const config = transformer.getConfig();
-
-    expect(config).toBeDefined();  });
-
-    expect(config.enableCleanup).toBeDefined();
-
-    expect(config.enableQueueDiscovery).toBeDefined();  beforeEach(() => {
-
-  });
-
-});  describe('Basic Transform', () => {    transformer = new EnhancedMarkdownTransformer(mockBaseTransformer);
-
-    it('should transform page with enhanced features', async () => {    context = {
-
-      const page: Page = {      currentPageId: 'test-page-id',
-
-        id: 'test-page-id',      spaceKey: 'TEST',
-
-        title: 'Test Page',      baseUrl: 'https://confluence.example.com',
-
-        bodyStorage: '<p>Test content</p>',      api: mockApi
-
-        version: 1,    };
-
-        space: { key: 'TEST' },    
-
-        ancestors: [],    // Reset mocks
-
-        children: { page: { results: [] } }    jest.clearAllMocks();
-
-      };  });
-
-
-
-      const result = await transformer.transform(page, context);  describe('list-children macro expansion', () => {
-
+  describe('list-children macro expansion', () => {
     it('should fetch child pages and create markdown list', async () => {
-
-      expect(result.content).toBe('Transformed content');      // Mock child pages response
-
-      expect(result.frontMatter.title).toBe('Test Page');      (mockApi.getChildPages as jest.Mock).mockResolvedValue({
-
-      expect(result.discoveryResult).toBeDefined();        results: [
-
-      expect(result.metrics).toBeDefined();          { id: 'child1', title: 'Child Page One', type: 'page' },
-
-    });          { id: 'child2', title: 'Child Page Two', type: 'page' },
-
+      // Mock child pages response
+      (mockApi.getChildPages as jest.Mock).mockResolvedValue({
+        results: [
+          { id: 'child1', title: 'Child Page One', type: 'page' },
+          { id: 'child2', title: 'Child Page Two', type: 'page' },
           { id: 'child3', title: 'Another Child', type: 'page' }
+        ],
+        start: 0,
+        limit: 50,
+        size: 3
+      });
 
-    it('should check configuration methods', () => {        ],
-
-      expect(transformer.isCleanupEnabled()).toBe(true);        start: 0,
-
-      expect(transformer.isQueueDiscoveryEnabled()).toBe(true);        limit: 50,
-
-              size: 3
-
-      const config = transformer.getConfig();      });
-
-      expect(config).toBeDefined();
-
-      expect(config.enableCleanup).toBeDefined();      const page: Page = {
-
-      expect(config.enableQueueDiscovery).toBeDefined();        id: 'test-id',
-
-    });        title: 'Test Page',
-
-  });        type: 'page',
-
-});        bodyStorage: '<p><ac:structured-macro ac:name="list-children" /></p>'
+      const page: Page = {
+        id: 'test-id',
+        title: 'Test Page',
+        type: 'page',
+        bodyStorage: '<p><ac:structured-macro ac:name="list-children" /></p>'
       };
 
       const result = await transformer.transformWithEnhancements(page, context);

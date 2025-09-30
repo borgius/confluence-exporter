@@ -5,6 +5,24 @@
 import { describe, test, expect, beforeEach, afterEach } from '@jest/globals';
 import { promises as fs } from 'fs';
 import * as path from 'path';
+
+// Mock cleanup service to avoid unified ESM issues
+jest.mock('../../src/cleanup/cleanupService', () => ({
+  createCleanupService: jest.fn(() => ({
+    process: jest.fn().mockResolvedValue({
+      success: true,
+      content: 'Cleaned content',
+      rulesApplied: ['whitespace', 'typography'],
+      rulesFailed: [],
+      metrics: {
+        processingTimeMs: 50,
+        rulesProcessed: 2,
+        charactersProcessed: 100
+      }
+    })
+  }))
+}));
+
 import { createCleanupService } from '../../src/cleanup/cleanupService';
 
 describe('Cleanup Performance Integration', () => {

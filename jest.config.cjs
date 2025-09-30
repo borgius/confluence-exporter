@@ -15,6 +15,6 @@ module.exports = {
     '^(\\.{1,2}/.*)\\.js$': '$1'
   },
   transformIgnorePatterns: [
-    'node_modules/(?!(p-limit|yocto-queue|unified|remark-parse|remark-stringify|vfile|mdast-util.*|micromark.*|unist-util.*|zwitch|longest-streak|decode-named-character-reference|character-entities|escape-string-regexp)/)'
+    'node_modules/(?!(p-limit|yocto-queue|unified|remark.*|vfile.*|mdast-util.*|micromark.*|unist-util.*|zwitch|longest-streak|decode-named-character-reference|character-entities|escape-string-regexp|devlop|bail|trough|is-plain-obj)/)'
   ]
 };
