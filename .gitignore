@@ -23,6 +23,10 @@ logs/
 *.export-in-progress
 resume.log
 
+# Test output
+test-output/
+output/
+
 # Misc
 .tmp/
 spaces

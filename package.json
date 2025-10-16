@@ -1,54 +1,36 @@
 {
   "name": "confluence-exporter",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "CLI + library to export a Confluence space to markdown with preserved structure.",
+  "description": "Minimal standalone CLI tool to export Confluence spaces to Markdown",
   "license": "MIT",
   "bin": {
-    "confluence-exporter": "./dist/cli/index.js"
+    "confluence-export": "./dist/index.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "clean": "rimraf dist",
+    "start": "node dist/index.js",
+    "clean": "rm -rf dist",
+    "rebuild": "npm run clean && npm run build",
+    "dev": "npm run build && npm run start",
     "lint": "eslint . --ext .ts",
     "test": "jest --passWithNoTests",
     "test:watch": "jest --watch",
-    "dev": "nodemon --watch src --ext ts --exec node --loader ts-node/esm src/cli/index.ts",
-    "prepare": "npm run build",
     "typecheck": "tsc --noEmit"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=18.0.0"
   },
-  "dependencies": {
-    "axios": "^1.12.2",
-    "commander": "^14.0.1",
-    "dotenv": "^17.2.2",
-    "gray-matter": "^4.0.3",
-    "https-proxy-agent": "^7.0.6",
-    "node-fetch": "^3.3.2",
-    "p-limit": "^7.1.1",
-    "remark-parse": "^11.0.0",
-    "remark-stringify": "^11.0.0",
-    "remark-textr": "^6.1.0",
-    "textr": "^0.3.0",
-    "typographic-quotes": "^2.0.1",
-    "unified": "^11.0.5",
-    "winston": "^3.17.0"
-  },
+  "keywords": [
+    "confluence",
+    "markdown",
+    "exporter",
+    "cli"
+  ],
+  "dependencies": {},
   "devDependencies": {
-    "@types/jest": "^30.0.0",
-    "@typescript-eslint/eslint-plugin": "^8.44.1",
-    "@typescript-eslint/parser": "^8.44.1",
-    "eslint": "^9.36.0",
-    "jest": "^30.2.0",
-    "nock": "^14.0.10",
-    "nodemon": "^3.1.10",
-    "rimraf": "^6.0.1",
-    "ts-jest": "^29.4.4",
-    "ts-node": "^10.9.2",
-    "typescript": "^5.9.2",
-    "typescript-eslint": "^8.44.1"
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
   }
 }
