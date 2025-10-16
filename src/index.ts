@@ -3,9 +3,9 @@
  * Minimal Confluence to Markdown Exporter - CLI Entry Point
  */
 
+import { config as loadEnv } from 'dotenv';
 import { ExportRunner } from './runner.js';
 import type { ConfluenceConfig } from './types.js';
-import { loadEnv } from './env.js';
 
 async function main() {
   // Load .env file if it exists
