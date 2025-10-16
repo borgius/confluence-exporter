@@ -14,13 +14,14 @@ async function main() {
 
   // Parse command line arguments
   const args = minimist(process.argv.slice(2), {
-    string: ['url', 'username', 'password', 'space', 'output'],
+    string: ['url', 'username', 'password', 'space', 'output', 'pageId'],
     alias: {
       u: 'url',
       n: 'username',
       p: 'password',
       s: 'space',
       o: 'output',
+      i: 'pageId',
       h: 'help'
     },
     default: {
@@ -37,6 +38,7 @@ async function main() {
     console.log('  -n, --username <email>   Confluence username/email');
     console.log('  -p, --password <token>   Confluence API token');
     console.log('  -s, --space <key>        Confluence space key');
+    console.log('  -i, --pageId <id>        Download specific page ID only (optional)');
     console.log('  -o, --output <dir>       Output directory (default: ./output)');
     console.log('  -h, --help               Show this help message\n');
     console.log('Environment Variables:');
@@ -46,7 +48,11 @@ async function main() {
     console.log('  CONFLUENCE_SPACE_KEY');
     console.log('  OUTPUT_DIR\n');
     console.log('Examples:');
+    console.log('  # Export entire space');
     console.log('  node index.js --url https://mysite.atlassian.net --username user@example.com --password mytoken --space MYSPACE');
+    console.log('  # Export single page');
+    console.log('  node index.js -u https://mysite.atlassian.net -n user@example.com -p mytoken -s MYSPACE -i 123456789');
+    console.log('  # Export with custom output directory');
     console.log('  node index.js -u https://mysite.atlassian.net -n user@example.com -p mytoken -s MYSPACE -o ./export');
     process.exit(0);
   }
@@ -57,7 +63,8 @@ async function main() {
     username: args.username || process.env.CONFLUENCE_USERNAME || '',
     password: args.password || process.env.CONFLUENCE_PASSWORD || '',
     spaceKey: args.space || process.env.CONFLUENCE_SPACE_KEY || '',
-    outputDir: args.output || process.env.OUTPUT_DIR || './output'
+    outputDir: args.output || process.env.OUTPUT_DIR || './output',
+    pageId: args.pageId || undefined
   };
 
   // Validate config

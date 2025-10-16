@@ -8,6 +8,7 @@ export interface ConfluenceConfig {
   password: string;
   spaceKey: string;
   outputDir: string;
+  pageId?: string; // Optional: if specified, export only this page
 }
 
 export interface Page {

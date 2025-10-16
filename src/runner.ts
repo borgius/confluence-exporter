@@ -24,11 +24,29 @@ export class ExportRunner {
    * Run the export process
    */
   async run(): Promise<void> {
-    console.log(`Starting export of space: ${this.config.spaceKey}`);
-    console.log(`Output directory: ${this.config.outputDir}`);
-
     // Create output directory if it doesn't exist
     await fs.mkdir(this.config.outputDir, { recursive: true });
+
+    // If pageId is specified, export only that page
+    if (this.config.pageId) {
+      console.log(`Exporting single page: ${this.config.pageId}`);
+      console.log(`Output directory: ${this.config.outputDir}\n`);
+
+      try {
+        const page = await this.api.getPage(this.config.pageId);
+        console.log(`Processing: ${page.title} (${page.id})`);
+        await this.processPage(page);
+        console.log(`\n✓ Page exported successfully!`);
+        console.log(`Files saved to: ${this.config.outputDir}`);
+      } catch (error) {
+        throw new Error(`Failed to export page ${this.config.pageId}: ${error instanceof Error ? error.message : error}`);
+      }
+      return;
+    }
+
+    // Otherwise, export entire space
+    console.log(`Starting export of space: ${this.config.spaceKey}`);
+    console.log(`Output directory: ${this.config.outputDir}\n`);
 
     let pageCount = 0;
 
