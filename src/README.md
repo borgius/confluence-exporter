@@ -10,6 +10,7 @@ A lightweight, standalone CLI tool to export Confluence spaces to Markdown files
 - 📝 Generates front matter with page metadata
 - 💾 Saves pages as `.md` files with safe filenames
 - 👤 Resolves user links to display names (with caching)
+- 📦 Saves original HTML alongside markdown files
 
 ## Prerequisites
 
@@ -44,11 +45,20 @@ node index.js
 
 The tool will create markdown files in the output directory with:
 
-- **Front matter** containing page metadata (title, id, version, parentId)
-- **Markdown content** converted from Confluence storage format (HTML)
+- **Markdown file** (`.md`) - Front matter + converted markdown content
+- **HTML file** (`.html`) - Original Confluence storage format for reference
 - **Safe filenames** generated from page titles
 
-Example output file:
+Example output files:
+```
+output/
+├── my-page-title.md
+├── my-page-title.html
+├── another-page.md
+└── another-page.html
+```
+
+Example markdown file:
 ```markdown
 ---
 title: "My Page Title"
@@ -61,6 +71,11 @@ parentId: "789012"
 
 This is the page content converted to Markdown...
 ```
+
+The HTML file contains the original Confluence storage format (XML/HTML) which can be useful for:
+- Debugging transformation issues
+- Preserving the original content
+- Manual inspection of complex macros
 
 ## Structure
 

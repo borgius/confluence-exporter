@@ -69,11 +69,16 @@ export class ExportRunner {
 
     // Create safe filename from title
     const filename = this.slugify(result.frontMatter.title);
-    const filepath = path.join(this.config.outputDir, `${filename}.md`);
+    const mdFilepath = path.join(this.config.outputDir, `${filename}.md`);
+    const htmlFilepath = path.join(this.config.outputDir, `${filename}.html`);
 
-    // Write to file
-    await fs.writeFile(filepath, markdownContent, 'utf-8');
+    // Write markdown file
+    await fs.writeFile(mdFilepath, markdownContent, 'utf-8');
     console.log(`  ✓ Saved: ${filename}.md`);
+
+    // Write original HTML file
+    await fs.writeFile(htmlFilepath, page.body, 'utf-8');
+    console.log(`  ✓ Saved: ${filename}.html`);
   }
 
   /**
