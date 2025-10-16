@@ -31,7 +31,8 @@
     "cli"
   ],
   "dependencies": {
-    "dotenv": "^17.2.3"
+    "dotenv": "^17.2.3",
+    "prettier": "^3.6.2"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

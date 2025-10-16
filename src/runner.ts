@@ -4,6 +4,7 @@
 
 import { promises as fs } from 'fs';
 import path from 'path';
+import prettier from 'prettier';
 import type { ConfluenceConfig, Page } from './types.js';
 import { ConfluenceApi } from './api.js';
 import { MarkdownTransformer } from './transformer.js';
@@ -77,13 +78,41 @@ export class ExportRunner {
     const mdFilepath = path.join(this.config.outputDir, `${filename}.md`);
     const htmlFilepath = path.join(this.config.outputDir, `${filename}.html`);
 
-    // Write markdown file
-    await fs.writeFile(mdFilepath, markdownContent, 'utf-8');
-    console.log(`  ✓ Saved: ${filename}.md`);
+    // Format and write markdown file
+    try {
+      const formattedMarkdown = await prettier.format(markdownContent, {
+        parser: 'markdown',
+        printWidth: 120,
+        proseWrap: 'preserve',
+        tabWidth: 2,
+        useTabs: false
+      });
+      await fs.writeFile(mdFilepath, formattedMarkdown, 'utf-8');
+      console.log(`  ✓ Saved: ${filename}.md (formatted)`);
+    } catch {
+      // If formatting fails, save unformatted markdown
+      console.warn(`  ⚠ Could not format Markdown, saving unformatted`);
+      await fs.writeFile(mdFilepath, markdownContent, 'utf-8');
+      console.log(`  ✓ Saved: ${filename}.md`);
+    }
 
-    // Write original HTML file
-    await fs.writeFile(htmlFilepath, page.body, 'utf-8');
-    console.log(`  ✓ Saved: ${filename}.html`);
+    // Format and write original HTML file
+    try {
+      const formattedHtml = await prettier.format(page.body, {
+        parser: 'html',
+        printWidth: 120,
+        tabWidth: 2,
+        useTabs: false,
+        htmlWhitespaceSensitivity: 'ignore'
+      });
+      await fs.writeFile(htmlFilepath, formattedHtml, 'utf-8');
+      console.log(`  ✓ Saved: ${filename}.html (formatted)`);
+    } catch {
+      // If formatting fails, save unformatted HTML
+      console.warn(`  ⚠ Could not format HTML, saving unformatted`);
+      await fs.writeFile(htmlFilepath, page.body, 'utf-8');
+      console.log(`  ✓ Saved: ${filename}.html`);
+    }
   }
 
   /**

@@ -11,6 +11,7 @@ A lightweight, standalone CLI tool to export Confluence spaces to Markdown files
 - 💾 Saves pages as `.md` files with safe filenames
 - 👤 Resolves user links to display names (with caching)
 - 📦 Saves original HTML alongside markdown files
+- ✨ Formats both Markdown and HTML files with Prettier for readability
 
 ## Prerequisites
 
@@ -77,6 +78,23 @@ The HTML file contains the original Confluence storage format (XML/HTML) which c
 - Debugging transformation issues
 - Preserving the original content
 - Manual inspection of complex macros
+
+**Prettier Formatting:**
+Both Markdown and HTML files are automatically formatted with Prettier for better readability:
+
+**Markdown:**
+- 120 character line width
+- Preserves prose wrapping (doesn't re-wrap text)
+- 2-space indentation for lists and nested content
+- Consistent spacing and formatting
+
+**HTML:**
+- Consistent indentation (2 spaces)
+- 120 character line width
+- Proper tag spacing
+- HTML whitespace sensitivity ignored for cleaner output
+
+If formatting fails for any file, the original unformatted content is saved with a warning.
 
 ## Structure
 
