@@ -54,11 +54,18 @@ export class ExportRunner {
     // Transform to markdown
     const result = await this.transformer.transform(page);
 
+    // Create safe filename from title
+    const filename = this.slugify(result.frontMatter.title);
+    
+    // Build original page URL
+    const originalUrl = `${this.config.baseUrl}/pages/viewpage.action?pageId=${page.id}`;
+
     // Create front matter
     const frontMatter = [
       '---',
       `title: "${result.frontMatter.title.replace(/"/g, '\\"')}"`,
       `id: "${result.frontMatter.id}"`,
+      `url: "${originalUrl}"`,
       result.frontMatter.version ? `version: ${result.frontMatter.version}` : '',
       result.frontMatter.parentId ? `parentId: "${result.frontMatter.parentId}"` : '',
       '---'
@@ -67,8 +74,6 @@ export class ExportRunner {
     // Combine front matter and content
     const markdownContent = `${frontMatter}\n\n${result.content}`;
 
-    // Create safe filename from title
-    const filename = this.slugify(result.frontMatter.title);
     const mdFilepath = path.join(this.config.outputDir, `${filename}.md`);
     const htmlFilepath = path.join(this.config.outputDir, `${filename}.html`);
 

@@ -63,6 +63,7 @@ Example markdown file:
 ---
 title: "My Page Title"
 id: "123456"
+url: "https://mysite.atlassian.net/pages/viewpage.action?pageId=123456"
 version: 5
 parentId: "789012"
 ---
