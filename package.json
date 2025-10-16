@@ -31,7 +31,9 @@
     "cli"
   ],
   "dependencies": {
+    "@types/minimist": "^1.2.5",
     "dotenv": "^17.2.3",
+    "minimist": "^1.2.8",
     "prettier": "^3.6.2"
   },
   "devDependencies": {
