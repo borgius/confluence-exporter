@@ -127,6 +127,44 @@ export class ConfluenceApi {
   }
 
   /**
+   * Get child pages of a parent page
+   */
+  async getChildPages(pageId: string): Promise<Page[]> {
+    const url = `${this.baseUrl}/rest/api/content/${pageId}/child/page?expand=version`;
+    
+    const response = await fetch(url, {
+      headers: {
+        'Authorization': this.authHeader,
+        'Accept': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      console.warn(`Failed to fetch child pages for ${pageId}: ${response.status}`);
+      return [];
+    }
+
+    interface ChildPageResponse {
+      id: string;
+      title: string;
+      version?: { number: number };
+    }
+
+    interface ChildPagesResponse {
+      results: ChildPageResponse[];
+    }
+
+    const data = await response.json() as ChildPagesResponse;
+    
+    return data.results.map(child => ({
+      id: child.id,
+      title: child.title,
+      body: '', // Don't fetch body for child page lists
+      version: child.version?.number,
+    }));
+  }
+
+  /**
    * Get user information by username (with caching)
    */
   async getUserByUsername(username: string): Promise<User | null> {

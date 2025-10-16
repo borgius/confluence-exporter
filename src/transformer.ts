@@ -26,7 +26,7 @@ export class MarkdownTransformer {
    * Transform Confluence storage format (HTML) to Markdown
    */
   async transform(page: Page): Promise<MarkdownResult> {
-    const markdown = await this.htmlToMarkdown(page.body);
+    const markdown = await this.htmlToMarkdown(page.body, page.id);
     
     return {
       content: markdown,
@@ -42,14 +42,16 @@ export class MarkdownTransformer {
   /**
    * Basic HTML to Markdown conversion
    */
-  private async htmlToMarkdown(html: string): Promise<string> {
+  private async htmlToMarkdown(html: string, pageId: string): Promise<string> {
     let markdown = html;
 
     // Transform user links first (before removing ac:link)
     markdown = await this.transformUserLinks(markdown);
 
-    // Remove Confluence-specific macros (basic approach)
-    markdown = markdown.replace(/<ac:structured-macro[^>]*>[\s\S]*?<\/ac:structured-macro>/g, '');
+    // Transform macros to markdown equivalents (with data fetching)
+    markdown = await this.transformMacros(markdown, pageId);
+
+    // Remove remaining ac:link elements
     markdown = markdown.replace(/<ac:link[^>]*>[\s\S]*?<\/ac:link>/g, '');
     
     // Headers
@@ -101,6 +103,61 @@ export class MarkdownTransformer {
     markdown = markdown.trim();
 
     return markdown;
+  }
+
+  /**
+   * Transform Confluence macros to Markdown
+   */
+  private async transformMacros(content: string, pageId: string): Promise<string> {
+    let result = content;
+
+    // Handle list-children macro - fetch actual child pages
+    const listChildrenRegex = /<ac:structured-macro[^>]*ac:name="list-children"[^>]*(?:\/>|>.*?<\/ac:structured-macro>)/gis;
+    const listChildrenMatches = Array.from(content.matchAll(listChildrenRegex));
+    
+    for (const match of listChildrenMatches) {
+      let replacement = '<!-- Child Pages List -->\n\n';
+      
+      if (this.api) {
+        try {
+          const childPages = await this.api.getChildPages(pageId);
+          if (childPages.length > 0) {
+            replacement = '## Child Pages\n\n' +
+              childPages.map(child => `- [${child.title}](${child.id}.md)`).join('\n') +
+              '\n\n';
+          }
+        } catch (error) {
+          console.warn(`Failed to fetch child pages for ${pageId}:`, error);
+        }
+      }
+      
+      result = result.replace(match[0], replacement);
+    }
+
+    // Apply other macro transformations
+    result = result
+      // Code blocks with language
+      .replace(/<ac:structured-macro[^>]*ac:name="code"[^>]*>.*?<ac:parameter[^>]*ac:name="language"[^>]*>(.*?)<\/ac:parameter>.*?<ac:plain-text-body><!\[CDATA\[(.*?)\]\]><\/ac:plain-text-body>.*?<\/ac:structured-macro>/gis, '```$1\n$2\n```\n\n')
+      // Code blocks without language
+      .replace(/<ac:structured-macro[^>]*ac:name="code"[^>]*>.*?<ac:plain-text-body><!\[CDATA\[(.*?)\]\]><\/ac:plain-text-body>.*?<\/ac:structured-macro>/gis, '```\n$1\n```\n\n')
+      // Info panels
+      .replace(/<ac:structured-macro[^>]*ac:name="info"[^>]*>.*?<ac:rich-text-body>(.*?)<\/ac:rich-text-body>.*?<\/ac:structured-macro>/gis, '> **Info:** $1\n\n')
+      // Warning panels
+      .replace(/<ac:structured-macro[^>]*ac:name="warning"[^>]*>.*?<ac:rich-text-body>(.*?)<\/ac:rich-text-body>.*?<\/ac:rich-text-body>.*?<\/ac:structured-macro>/gis, '> **Warning:** $1\n\n')
+      // Note panels
+      .replace(/<ac:structured-macro[^>]*ac:name="note"[^>]*>.*?<ac:rich-text-body>(.*?)<\/ac:rich-text-body>.*?<\/ac:structured-macro>/gis, '> **Note:** $1\n\n')
+      // Panel macro - extract content
+      .replace(/<ac:structured-macro[^>]*ac:name="panel"[^>]*>.*?<ac:rich-text-body>(.*?)<\/ac:rich-text-body>.*?<\/ac:structured-macro>/gis, '$1\n\n')
+      // Excerpt macro - extract content
+      .replace(/<ac:structured-macro[^>]*ac:name="excerpt"[^>]*>.*?<ac:rich-text-body>(.*?)<\/ac:rich-text-body>.*?<\/ac:structured-macro>/gis, '$1\n\n')
+      // Table of contents
+      .replace(/<ac:structured-macro[^>]*ac:name="toc"[^>]*(?:\/>|>.*?<\/ac:structured-macro>)/gis, '<!-- Table of Contents -->\n\n')
+      // Content by label
+      .replace(/<ac:structured-macro[^>]*ac:name="contentbylabel"[^>]*(?:\/>|>.*?<\/ac:structured-macro>)/gis, '<!-- Content by Label -->\n\n')
+      // Other macros - convert to comments
+      .replace(/<ac:structured-macro[^>]*ac:name="([^"]*)"[^>]*(?:\/>|>.*?<\/ac:structured-macro>)/gis, '<!-- Confluence Macro: $1 -->\n\n');
+
+    return result;
   }
 
   /**
