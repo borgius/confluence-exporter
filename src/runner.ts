@@ -16,7 +16,7 @@ export class ExportRunner {
   constructor(config: ConfluenceConfig) {
     this.config = config;
     this.api = new ConfluenceApi(config);
-    this.transformer = new MarkdownTransformer();
+    this.transformer = new MarkdownTransformer(this.api);
   }
 
   /**
@@ -52,7 +52,7 @@ export class ExportRunner {
    */
   private async processPage(page: Page): Promise<void> {
     // Transform to markdown
-    const result = this.transformer.transform(page);
+    const result = await this.transformer.transform(page);
 
     // Create front matter
     const frontMatter = [

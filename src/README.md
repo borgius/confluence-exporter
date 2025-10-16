@@ -9,6 +9,7 @@ A lightweight, standalone CLI tool to export Confluence spaces to Markdown files
 - 🔄 Basic HTML to Markdown transformation
 - 📝 Generates front matter with page metadata
 - 💾 Saves pages as `.md` files with safe filenames
+- 👤 Resolves user links to display names (with caching)
 
 ## Prerequisites
 
@@ -72,6 +73,29 @@ src2/
 ├── index.ts          # CLI entry point
 └── README.md         # This file
 ```
+
+## User Link Resolution
+
+The exporter automatically resolves Confluence user links to display names:
+
+```html
+<!-- Confluence HTML -->
+<ac:link><ri:user ri:username="john.doe"/></ac:link>
+<ac:link><ri:user ri:userkey="ff8080817b0a1234"/></ac:link>
+```
+
+Becomes:
+
+```markdown
+@John Doe
+@John Doe
+```
+
+Features:
+- ✓ Resolves by username or userkey
+- ✓ Caches user lookups to minimize API calls
+- ✓ Falls back to username if API fails
+- ✓ Handles unknown users gracefully
 
 ## Limitations
 

@@ -2,11 +2,12 @@
  * Minimal Confluence API client
  */
 
-import type { Page, PaginatedResponse, ConfluenceConfig } from './types.js';
+import type { Page, PaginatedResponse, ConfluenceConfig, User } from './types.js';
 
 export class ConfluenceApi {
   private baseUrl: string;
   private authHeader: string;
+  private userCache: Map<string, User> = new Map();
 
   constructor(config: ConfluenceConfig) {
     this.baseUrl = config.baseUrl.replace(/\/$/, ''); // Remove trailing slash
@@ -122,6 +123,81 @@ export class ConfluenceApi {
       }
       
       start += limit;
+    }
+  }
+
+  /**
+   * Get user information by username (with caching)
+   */
+  async getUserByUsername(username: string): Promise<User | null> {
+    // Check cache first
+    const cached = this.userCache.get(username);
+    if (cached) {
+      return cached;
+    }
+
+    try {
+      const url = `${this.baseUrl}/rest/api/user?username=${encodeURIComponent(username)}&expand=details.personal`;
+      
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': this.authHeader,
+          'Accept': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        console.warn(`Failed to fetch user ${username}: ${response.status}`);
+        return null;
+      }
+
+      const data = await response.json() as User;
+      
+      // Cache the result
+      this.userCache.set(username, data);
+      
+      return data;
+    } catch (error) {
+      console.warn(`Error fetching user ${username}:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Get user information by user key (with caching)
+   */
+  async getUserByKey(userKey: string): Promise<User | null> {
+    // Check cache first
+    const cacheKey = `key:${userKey}`;
+    const cached = this.userCache.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    try {
+      const url = `${this.baseUrl}/rest/api/user?key=${encodeURIComponent(userKey)}&expand=details.personal`;
+      
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': this.authHeader,
+          'Accept': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        console.warn(`Failed to fetch user by key ${userKey}: ${response.status}`);
+        return null;
+      }
+
+      const data = await response.json() as User;
+      
+      // Cache the result
+      this.userCache.set(cacheKey, data);
+      
+      return data;
+    } catch (error) {
+      console.warn(`Error fetching user by key ${userKey}:`, error);
+      return null;
     }
   }
 }

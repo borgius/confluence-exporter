@@ -3,6 +3,7 @@
  */
 
 import type { Page } from './types.js';
+import type { ConfluenceApi } from './api.js';
 
 export interface MarkdownResult {
   content: string;
@@ -15,11 +16,17 @@ export interface MarkdownResult {
 }
 
 export class MarkdownTransformer {
+  private api?: ConfluenceApi;
+
+  constructor(api?: ConfluenceApi) {
+    this.api = api;
+  }
+
   /**
    * Transform Confluence storage format (HTML) to Markdown
    */
-  transform(page: Page): MarkdownResult {
-    const markdown = this.htmlToMarkdown(page.body);
+  async transform(page: Page): Promise<MarkdownResult> {
+    const markdown = await this.htmlToMarkdown(page.body);
     
     return {
       content: markdown,
@@ -35,8 +42,11 @@ export class MarkdownTransformer {
   /**
    * Basic HTML to Markdown conversion
    */
-  private htmlToMarkdown(html: string): string {
+  private async htmlToMarkdown(html: string): Promise<string> {
     let markdown = html;
+
+    // Transform user links first (before removing ac:link)
+    markdown = await this.transformUserLinks(markdown);
 
     // Remove Confluence-specific macros (basic approach)
     markdown = markdown.replace(/<ac:structured-macro[^>]*>[\s\S]*?<\/ac:structured-macro>/g, '');
@@ -91,5 +101,49 @@ export class MarkdownTransformer {
     markdown = markdown.trim();
 
     return markdown;
+  }
+
+  /**
+   * Transform user links to display names
+   */
+  private async transformUserLinks(html: string): Promise<string> {
+    if (!this.api) {
+      // If no API provided, just remove user links
+      return html.replace(/<ac:link[^>]*><ri:user[^>]*\/><\/ac:link>/g, '@unknown-user');
+    }
+
+    let result = html;
+    
+    // Match user links by username
+    const usernameRegex = /<ac:link[^>]*><ri:user[^>]*ri:username="([^"]+)"[^>]*\/><\/ac:link>/gi;
+    const usernameMatches = Array.from(html.matchAll(usernameRegex));
+    
+    for (const match of usernameMatches) {
+      const username = match[1];
+      const user = await this.api.getUserByUsername(username);
+      
+      if (user) {
+        result = result.replace(match[0], `@${user.displayName}`);
+      } else {
+        result = result.replace(match[0], `@${username}`);
+      }
+    }
+
+    // Match user links by userkey
+    const userkeyRegex = /<ac:link[^>]*><ri:user[^>]*ri:userkey="([^"]+)"[^>]*\/><\/ac:link>/gi;
+    const userkeyMatches = Array.from(result.matchAll(userkeyRegex));
+    
+    for (const match of userkeyMatches) {
+      const userKey = match[1];
+      const user = await this.api.getUserByKey(userKey);
+      
+      if (user) {
+        result = result.replace(match[0], `@${user.displayName}`);
+      } else {
+        result = result.replace(match[0], `@user-${userKey.slice(-8)}`);
+      }
+    }
+
+    return result;
   }
 }

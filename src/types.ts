@@ -27,3 +27,10 @@ export interface PaginatedResponse<T> {
     next?: string;
   };
 }
+
+export interface User {
+  userKey: string;
+  username: string;
+  displayName: string;
+  email?: string;
+}
