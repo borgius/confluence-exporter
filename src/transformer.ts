@@ -123,7 +123,7 @@ export class MarkdownTransformer {
           const childPages = await this.api.getChildPages(pageId);
           if (childPages.length > 0) {
             replacement = '## Child Pages\n\n' +
-              childPages.map(child => `- [${child.title}](${child.id}.md)`).join('\n') +
+              childPages.map(child => `- [${child.title}](${this.slugify(child.title)}.md)`).join('\n') +
               '\n\n';
           }
         } catch (error) {
@@ -158,6 +158,18 @@ export class MarkdownTransformer {
       .replace(/<ac:structured-macro[^>]*ac:name="([^"]*)"[^>]*(?:\/>|>.*?<\/ac:structured-macro>)/gis, '<!-- Confluence Macro: $1 -->\n\n');
 
     return result;
+  }
+
+  /**
+   * Convert title to safe filename
+   */
+  private slugify(text: string): string {
+    return text
+      .toLowerCase()
+      .replace(/[^\w\s-]/g, '') // Remove special chars
+      .replace(/\s+/g, '-')     // Replace spaces with hyphens
+      .replace(/-+/g, '-')      // Replace multiple hyphens with single
+      .trim();
   }
 
   /**
