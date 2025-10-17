@@ -14,7 +14,7 @@ async function main() {
 
   // Parse command line arguments
   const args = minimist(process.argv.slice(2), {
-    string: ['url', 'username', 'password', 'space', 'output', 'pageId'],
+    string: ['url', 'username', 'password', 'space', 'output', 'pageId', 'pageSize'],
     alias: {
       u: 'url',
       n: 'username',
@@ -37,6 +37,7 @@ async function main() {
     console.log('  -s, --space <key>        Confluence space key');
     console.log('  -i, --pageId <id>        Download specific page ID only (optional)');
     console.log('  -o, --output <dir>       Output directory (default: ./output)');
+    console.log('  --pageSize <number>      Items per API page (default: 25)');
     console.log('  -h, --help               Show this help message\n');
     console.log('Environment Variables:');
     console.log('  CONFLUENCE_BASE_URL');
@@ -61,7 +62,8 @@ async function main() {
     password: args.password || process.env.CONFLUENCE_PASSWORD || '',
     spaceKey: args.space || process.env.CONFLUENCE_SPACE_KEY || '',
     outputDir: args.output || process.env.OUTPUT_DIR || './output',
-    pageId: args.pageId || undefined
+    pageId: args.pageId || undefined,
+    pageSize: args.pageSize ? parseInt(args.pageSize, 10) : undefined
   };
 
   // Validate config

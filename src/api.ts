@@ -110,15 +110,16 @@ export class ConfluenceApi {
   /**
    * Fetch all pages from a space (handles pagination)
    */
-  async *getAllPages(spaceKey: string): AsyncGenerator<Page> {
+  async *getAllPages(spaceKey: string, pageSize: number = 25): AsyncGenerator<Page & { apiPageNumber: number }> {
     let start = 0;
-    const limit = 25;
+    const limit = pageSize;
+    let apiPageNumber = 1;
     
     while (true) {
       const response = await this.listPages(spaceKey, start, limit);
       
       for (const page of response.results) {
-        yield page;
+        yield { ...page, apiPageNumber };
       }
       
       // Check if there are more pages
@@ -127,6 +128,7 @@ export class ConfluenceApi {
       }
       
       start += limit;
+      apiPageNumber++;
     }
   }
 

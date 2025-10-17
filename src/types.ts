@@ -9,6 +9,7 @@ export interface ConfluenceConfig {
   spaceKey: string;
   outputDir: string;
   pageId?: string; // Optional: if specified, export only this page
+  pageSize?: number; // Optional: number of items per API page (default: 25)
 }
 
 export interface Page {

@@ -67,20 +67,49 @@ export class ExportRunner {
   private async createIndex(): Promise<void> {
     const indexPath = path.join(this.config.outputDir, 'index.yaml');
     
-    // Initialize the file with header metadata as comments
-    const header = `# Confluence Export Index
+    let pageCount = 0;
+    const indexedPageIds = new Set<string>();
+    let pageSize = this.config.pageSize || 25;
+    
+    // Check if index.yaml already exists (resume functionality)
+    try {
+      const existingContent = await fs.readFile(indexPath, 'utf-8');
+      
+      // Extract page size from comment if it exists
+      const pageSizeMatch = existingContent.match(/# Page Size: (\d+)/);
+      if (pageSizeMatch) {
+        pageSize = parseInt(pageSizeMatch[1], 10);
+        console.log(`Using existing page size from index: ${pageSize}`);
+      }
+      
+      const existingPages = yaml.parse(existingContent) as PageIndexEntry[];
+      
+      if (existingPages && Array.isArray(existingPages)) {
+        pageCount = existingPages.length;
+        existingPages.forEach(page => indexedPageIds.add(page.id));
+        console.log(`Found existing index with ${pageCount} pages. Resuming from page ${pageCount + 1}...\n`);
+      }
+    } catch (_error) {
+      // File doesn't exist or is invalid, start fresh
+      const header = `# Confluence Export Index
 # Space: ${this.config.spaceKey}
 # Export Date: ${new Date().toISOString()}
+# Page Size: ${pageSize}
 
 `;
-    await fs.writeFile(indexPath, header, 'utf-8');
-    
-    let pageCount = 0;
+      await fs.writeFile(indexPath, header, 'utf-8');
+      console.log(`Creating new index with page size: ${pageSize}...\n`);
+    }
     
     // Fetch all pages metadata (without body content) and append each to the file
-    for await (const page of this.api.getAllPages(this.config.spaceKey)) {
+    for await (const page of this.api.getAllPages(this.config.spaceKey, pageSize)) {
+      // Skip if already indexed
+      if (indexedPageIds.has(page.id)) {
+        continue;
+      }
+      
       pageCount++;
-      console.log(`[${pageCount}] Indexed: ${page.title} (${page.id})`);
+      console.log(`[${pageCount}] Indexed: ${page.title} (${page.id}) [API Page ${page.apiPageNumber}]`);
       
       // Create page entry
       const pageEntry: PageIndexEntry = {
@@ -90,7 +119,7 @@ export class ExportRunner {
         parentId: page.parentId,
         modifiedDate: page.modifiedDate,
         indexedDate: new Date().toISOString(),
-        pageNumber: pageCount
+        pageNumber: page.apiPageNumber
       };
       
       // Convert to YAML and format as array item (with leading -)
