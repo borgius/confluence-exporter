@@ -10,61 +10,36 @@ import type { ConfluenceConfig, PageIndexEntry, PageTreeNode } from '../types.js
 import type { CommandContext, CommandHandler } from './types.js';
 
 export class PlanCommand implements CommandHandler {
-  constructor(private config: ConfluenceConfig) {}
+  api: ConfluenceApi;
+  queuePath: string;
+  treePath: string;
+  tree: PageTreeNode[];
+  constructor(private config: ConfluenceConfig) {
+    this.api = new ConfluenceApi(this.config);
+    this.queuePath = path.join(this.config.outputDir, '_queue.yaml');
+    this.treePath = path.join(this.config.outputDir, '_tree.yaml');
+    this.tree = [];
+  }
 
   async execute(context: CommandContext): Promise<void> {
-    const api = new ConfluenceApi(this.config);
 
     // Create output directory if it doesn't exist
     fs.mkdirSync(this.config.outputDir, { recursive: true });
 
-    const queuePath = path.join(this.config.outputDir, '_queue.yaml');
-    const treePath = path.join(this.config.outputDir, '_tree.yaml');
 
     // Step 1: Build complete tree structure (no limits applied here)
-    let tree: PageTreeNode[];
+    this.tree = this.buildTreeFromIndex();
 
     if (this.config.pageId) {
       // Build tree from specific page and all children
-      console.log(`Building tree for page: ${this.config.pageId} and all children`);
-      console.log(`Output directory: ${this.config.outputDir}\n`);
-
-      try {
-        const rootNode = await this.collectPageTree(api, this.config.pageId);
-        tree = [rootNode];
-      } catch (error) {
-        throw new Error(`Failed to build tree for page ${this.config.pageId}: ${error instanceof Error ? error.message : error}`);
-      }
-    } else {
-      // Build tree from existing _index.yaml
-      console.log(`Building tree from existing index`);
-      console.log(`Output directory: ${this.config.outputDir}\n`);
-
-     
-      try {
-        
-        // Build COMPLETE tree structure (no limit applied)
-        tree = this.buildTreeFromIndex();
-        
-        console.log(`Built tree structure with ${tree.length} root node(s)`);
-      } catch (error) {
-        throw new Error(`Failed to read index: ${error instanceof Error ? error.message : error}`);
-      }
-    }
-
-    // Step 2: Write complete tree structure to disk
-    console.log(`\nWriting complete tree structure...`);
-    try {
-      this.writeTree(treePath, this.config, tree);
-      console.log(`✓ Complete tree structure saved: ${treePath}`);
-    } catch (error) {
-      throw new Error(`Failed to write tree: ${error instanceof Error ? error.message : error}`);
+      console.log(`Building tree from specific page: ${this.config.pageId}`);
+      this.tree = [this.collectPageTree(this.config.pageId)];
     }
 
     // Step 3: Create queue from tree (apply limit only here)
     console.log(`\nCreating download queue from tree...`);
     try {
-      const allPages = this.flattenTreeArray(tree);
+      const allPages = this.flattenTreeArray(this.tree);
       console.log(`Flattened tree to ${allPages.length} pages`);
       
       // Apply limit if specified (only affects queue, not tree)
@@ -74,9 +49,9 @@ export class PlanCommand implements CommandHandler {
         console.log(`Limiting queue to first ${this.config.limit} pages (tree contains all ${allPages.length})`);
       }
 
-      this.writeQueue(queuePath, this.config, pagesToQueue);
+      this.writeQueue(this.queuePath, this.config, pagesToQueue);
 
-      console.log(`✓ Queue created: ${queuePath}`);
+      console.log(`✓ Queue created: ${this.queuePath}`);
       console.log(`  Total pages in queue: ${pagesToQueue.length}`);
       console.log(`  Total pages in tree: ${allPages.length}`);
     } catch (error) {
@@ -87,35 +62,10 @@ export class PlanCommand implements CommandHandler {
   /**
    * Recursively collect a page and all its descendants
    */
-  private async collectPageTree(api: ConfluenceApi, pageId: string, depth: number = 0): Promise<PageTreeNode> {
+  private collectPageTree(pageId: string, depth: number = 0): PageTreeNode {
     const indent = '  '.repeat(depth);
     
     // Fetch the page
-    const page = await api.getPage(pageId);
-    console.log(`${indent}[${depth + 1}] Found: ${page.title} (${page.id})`);
-    
-    // Create tree node
-    const node: PageTreeNode = {
-      id: page.id,
-      title: page.title,
-      version: page.version,
-      parentId: page.parentId,
-      modifiedDate: page.modifiedDate,
-      children: []
-    };
-    
-    // Fetch child pages
-    const children = await api.getChildPages(pageId);
-    
-    // Recursively collect children
-    for (const child of children) {
-      const childNode = await this.collectPageTree(api, child.id, depth + 1);
-      if (node.children) {
-        node.children.push(childNode);
-      }
-    }
-    
-    return node;
   }
 
   /**
@@ -194,21 +144,23 @@ export class PlanCommand implements CommandHandler {
         roots.push(node);
       }
     }
-    
+    this.writeTree(this.treePath, this.config, roots);
+    console.log(`✓ Complete tree structure saved: ${this.treePath}`);
+
     return roots;
   }
 
   /**
    * Write _tree.yaml file with hierarchical structure
    */
-  private writeTree(treePath: string, config: CommandContext['config'], tree: PageTreeNode[]): void {
+  private writeTree(treePath: string, config: CommandContext['config']): void {
     const header = `# Confluence Page Tree
 # Space: ${config.spaceKey}
 # Created: ${new Date().toISOString()}
 
 `;
-    
-    const yamlContent = yaml.stringify(tree, {
+
+    const yamlContent = yaml.stringify(this.tree, {
       indent: 2,
       lineWidth: 0 // No line wrapping
     });
