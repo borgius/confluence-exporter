@@ -15,6 +15,7 @@ export interface ConfluenceConfig {
   pageId?: string; // Optional: if specified, export only this page
   pageSize?: number; // Optional: number of items per API page (default: 25)
   limit?: number; // Optional: maximum number of pages to process
+  clear?: boolean; // Optional: if specified, clears the output directory before export
 }
 
 // ============================================================================

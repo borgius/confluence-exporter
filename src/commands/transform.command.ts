@@ -10,6 +10,12 @@ import { slugify, unslugify } from '../utils.js';
 import type { CommandContext, CommandHandler } from './types.js';
 import type { ConfluenceConfig } from '../types.js';
 
+interface TreeNode {
+  name: string;
+  children: { [key: string]: TreeNode };
+  files: Array<{ name: string; relativePath: string }>;
+}
+
 export class TransformCommand implements CommandHandler {
   private api!: ConfluenceApi;
   constructor(private config: ConfluenceConfig) {}
@@ -18,6 +24,13 @@ export class TransformCommand implements CommandHandler {
 
     console.log(`Transforming HTML files to Markdown...`);
     console.log(`Output directory: ${this.config.outputDir}\n`);
+
+    // Clear existing MD files and images if --clear flag is set
+    if (this.config.clear) {
+      console.log('Clearing existing .md files and images folders...');
+      await this.clearExistingFiles(this.config.outputDir);
+      console.log('✓ Cleared existing files\n');
+    }
 
     let transformedCount = 0;
     let skippedCount = 0;
@@ -154,6 +167,11 @@ export class TransformCommand implements CommandHandler {
     if (errorCount > 0) {
       console.log(`  Errors: ${errorCount} files`);
     }
+
+    // Create links folder and _links.md file
+    console.log('\nCreating links folder and _links.md file...');
+    await this.createLinksStructure(this.config.outputDir);
+    console.log('✓ Links structure created');
   }
 
   /**
@@ -252,19 +270,32 @@ export class TransformCommand implements CommandHandler {
       // Download the image if API is available
       if (this.api) {
         try {
-          // URL-encode the filename for API call to handle spaces and special characters
-          const encodedImageName = encodeURIComponent(originalFilename);
-          const imageData = await this.api.downloadAttachment(pageId, encodedImageName);
+          // Try downloading with original filename first (Confluence API may handle encoding internally)
+          let imageData = await this.api.downloadAttachment(pageId, originalFilename);
+          
+          // If that fails, try with URL-encoded filename
+          if (!imageData) {
+            const encodedImageName = encodeURIComponent(originalFilename);
+            imageData = await this.api.downloadAttachment(pageId, encodedImageName);
+          }
+          
           if (imageData) {
             images.push({ filename: slugifiedFilename, data: imageData });
             console.log(`  ✓ Downloaded image: ${originalFilename} -> ${slugifiedFilename}`);
           } else {
-            console.warn(`  ⚠ Failed to download image: ${originalFilename}`);
-            replacement = `![${originalFilename} (not found)](images/${slugifiedFilename})`;
+            // Image might be on a different page or not exist
+            console.warn(`  ⚠ Image not found on this page: ${originalFilename} (may be on parent/child page)`);
+            replacement = `![${originalFilename}](images/${slugifiedFilename})`;
           }
         } catch (error) {
-          console.warn(`  ⚠ Error downloading image ${originalFilename}:`, error);
-          replacement = `![${originalFilename} (error)](images/${slugifiedFilename})`;
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          if (errorMessage.includes('404')) {
+            console.warn(`  ⚠ Image not attached to this page: ${originalFilename}`);
+          } else {
+            console.warn(`  ⚠ Error downloading image ${originalFilename}:`, errorMessage);
+          }
+          // Keep the reference but mark as missing
+          replacement = `![${originalFilename}](images/${slugifiedFilename})`;
         }
       }
 
@@ -474,5 +505,166 @@ export class TransformCommand implements CommandHandler {
     cleaned = cleaned.trim() + '\n';
 
     return cleaned;
+  }
+
+  /**
+   * Create links folder with symlinks and _links.md with tree structure
+   */
+  private async createLinksStructure(outputDir: string): Promise<void> {
+    const linksDir = path.join(outputDir, 'links');
+    
+    // Remove existing links folder if it exists
+    try {
+      await fs.rm(linksDir, { recursive: true, force: true });
+    } catch {
+      // Ignore if doesn't exist
+    }
+    
+    // Create fresh links folder
+    await fs.mkdir(linksDir, { recursive: true });
+    
+    // Find all MD files recursively
+    const findMdFiles = async (dir: string, fileList: Array<{ path: string; relativePath: string }> = []): Promise<Array<{ path: string; relativePath: string }>> => {
+      const entries = await fs.readdir(dir, { withFileTypes: true });
+      
+      for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+        
+        if (entry.isDirectory() && !entry.name.startsWith('_') && entry.name !== 'images' && entry.name !== 'links') {
+          await findMdFiles(fullPath, fileList);
+        } else if (entry.isFile() && entry.name.endsWith('.md') && !entry.name.startsWith('_')) {
+          const relativePath = path.relative(outputDir, fullPath);
+          fileList.push({ path: fullPath, relativePath });
+        }
+      }
+      
+      return fileList;
+    };
+    
+    const mdFiles = await findMdFiles(outputDir);
+    
+    // Create symlinks in links folder
+    for (const file of mdFiles) {
+      const linkName = path.basename(file.path);
+      const linkPath = path.join(linksDir, linkName);
+      const targetPath = path.relative(linksDir, file.path);
+      
+      try {
+        await fs.symlink(targetPath, linkPath);
+      } catch (error) {
+        console.warn(`  ⚠ Failed to create symlink for ${linkName}:`, error instanceof Error ? error.message : error);
+      }
+    }
+    
+    console.log(`  ✓ Created ${mdFiles.length} symlinks in links/`);
+    
+    // Build tree structure for _links.md
+    const tree = this.buildFileTree(mdFiles);
+    const treeMarkdown = this.generateTreeMarkdown(tree, outputDir);
+    
+    // Write _links.md
+    const linksFilePath = path.join(outputDir, '_links.md');
+    const linksContent = `# Documentation Links\n\n${treeMarkdown}`;
+    
+    try {
+      const formattedContent = await prettier.format(linksContent, {
+        parser: 'markdown',
+        printWidth: 120,
+        proseWrap: 'preserve',
+        tabWidth: 2,
+        useTabs: false
+      });
+      await fs.writeFile(linksFilePath, formattedContent, 'utf-8');
+    } catch {
+      await fs.writeFile(linksFilePath, linksContent, 'utf-8');
+    }
+    
+    console.log(`  ✓ Created _links.md with tree structure`);
+  }
+
+  /**
+   * Build a tree structure from flat file list
+   */
+  private buildFileTree(files: Array<{ path: string; relativePath: string }>): TreeNode {
+    const root: TreeNode = { name: '', children: {}, files: [] };
+    
+    for (const file of files) {
+      const parts = file.relativePath.split(path.sep);
+      let current = root;
+      
+      // Navigate/create directory structure
+      for (let i = 0; i < parts.length - 1; i++) {
+        const part = parts[i];
+        if (!current.children[part]) {
+          current.children[part] = { name: part, children: {}, files: [] };
+        }
+        current = current.children[part];
+      }
+      
+      // Add file to current directory
+      current.files.push({
+        name: parts[parts.length - 1],
+        relativePath: file.relativePath
+      });
+    }
+    
+    return root;
+  }
+
+  /**
+   * Generate markdown tree structure
+   */
+  private generateTreeMarkdown(node: TreeNode, outputDir: string, level: number = 0): string {
+    let result = '';
+    const indent = '  '.repeat(level);
+    
+    // Sort directories and files alphabetically
+    const sortedDirs = Object.keys(node.children).sort();
+    const sortedFiles = node.files.sort((a, b) => a.name.localeCompare(b.name));
+    
+    // Add directories first
+    for (const dirName of sortedDirs) {
+      const child = node.children[dirName];
+      result += `${indent}- **${dirName}/**\n`;
+      result += this.generateTreeMarkdown(child, outputDir, level + 1);
+    }
+    
+    // Add files
+    for (const file of sortedFiles) {
+      const linkPath = file.relativePath;
+      result += `${indent}- [${file.name}](${linkPath})\n`;
+    }
+    
+    return result;
+  }
+
+  /**
+   * Recursively clear existing .md files and images folders
+   */
+  private async clearExistingFiles(dir: string): Promise<void> {
+    try {
+      const entries = await fs.readdir(dir, { withFileTypes: true });
+      
+      for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+        
+        if (entry.isDirectory()) {
+          if (entry.name === 'images' || entry.name === 'links') {
+            // Remove entire images and links folders
+            await fs.rm(fullPath, { recursive: true, force: true });
+            console.log(`  Removed: ${path.relative(this.config.outputDir, fullPath)}/`);
+          } else if (!entry.name.startsWith('_')) {
+            // Recursively clear subdirectories (skip _index, _queue, etc.)
+            await this.clearExistingFiles(fullPath);
+          }
+        } else if (entry.isFile() && entry.name.endsWith('.md') && !entry.name.startsWith('_')) {
+          // Remove .md files
+          await fs.unlink(fullPath);
+          console.log(`  Removed: ${path.relative(this.config.outputDir, fullPath)}`);
+        }
+      }
+    } catch (error) {
+      console.warn(`Warning: Could not clear files in ${dir}:`, error instanceof Error ? error.message : error);
+    }
   }
 }
