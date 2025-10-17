@@ -941,30 +941,144 @@ function helperFunction() { ... }
 
 ## Testing Guidelines
 
-### Unit Tests
-- Located in `tests/` directory
-- Use Jest framework
-- Mock API calls with jest.fn()
-- Test transformations with fixtures
+### Test Coverage
 
-### Example Test Structure
+The project has **test coverage** for core functionality and basic command structure:
+
+**Command Tests** (`tests/commands/`):
+- ✅ `help.command.test.ts` - Basic instantiation test
+- ✅ `index.command.test.ts` - Basic instantiation test  
+- ✅ `plan.command.test.ts` - Basic instantiation test
+- ✅ `download.command.test.ts` - Basic instantiation test
+- ✅ `transform.command.test.ts` - Basic instantiation test
+
+**Core Functionality Tests** (`tests/`):
+- ✅ `transformer.test.ts` - HTML to Markdown transformation (7 tests)
+- ✅ `cleaner.test.ts` - Markdown cleanup patterns (9 tests)
+
+**Note:** Command tests are basic because commands create their own `ConfluenceApi` instances internally, which cannot be easily mocked with Jest + ESM modules. To enable full command testing, commands would need refactoring to use dependency injection.
+
+### Test Architecture
+
+Uses **manual mock classes** compatible with ESM:
+
 ```typescript
-describe('MarkdownTransformer', () => {
-  it('should transform bold text', () => {
-    const input = '<strong>bold</strong>';
-    const expected = '**bold**';
-    const result = transformer.htmlToMarkdown(input);
-    expect(result).toBe(expected);
+// Manual mock class for API (used in transformer tests)
+class MockApi implements Partial<ConfluenceApi> {
+  async getPage(id: string): Promise<Page> {
+    return mockPageData;
+  }
+}
+
+// Console output capture
+let consoleOutput: string[];
+beforeEach(() => {
+  consoleOutput = [];
+  console.log = (...args: unknown[]) => {
+    consoleOutput.push(args.join(' '));
+  };
+});
+```
+
+### Test Structure
+
+All tests follow consistent AAA pattern:
+
+```typescript
+describe('CommandName', () => {
+  let command: CommandClass;
+  let mockContext: CommandContext;
+  
+  beforeEach(() => {
+    // Arrange - Setup mocks and context
+    command = new CommandClass();
+    mockContext = { config: {...}, args: {} };
+  });
+  
+  afterEach(() => {
+    // Cleanup - Remove temp files, restore console
+  });
+  
+  describe('feature group', () => {
+    it('should do something specific', async () => {
+      // Arrange - Prepare test data
+      // Act - Execute the command
+      // Assert - Verify results
+    });
   });
 });
 ```
 
 ### Running Tests
+
 ```bash
-npm test                    # All tests
-npm test -- --testNamePattern="transform"  # Specific tests
-npm run test:coverage       # With coverage report
+# Run all tests
+npm test
+
+# Run tests in watch mode
+npm run test:watch
+
+# Run tests with coverage
+npm run test:coverage
+
+# Run specific test file
+npm test -- help.command.test.ts
+
+# Run tests matching pattern
+npm test -- --testNamePattern="should transform"
 ```
+
+### Coverage Summary
+
+| Component | Test File | Coverage |
+|-----------|-----------|----------|
+| Help Command | `help.command.test.ts` | ✅ Basic |
+| Index Command | `index.command.test.ts` | ✅ Basic |
+| Plan Command | `plan.command.test.ts` | ✅ Basic |
+| Download Command | `download.command.test.ts` | ✅ Basic |
+| Transform Command | `transform.command.test.ts` | ✅ Basic |
+| HTML→MD Transformer | `transformer.test.ts` | ✅ Complete (7 tests) |
+| Markdown Cleaner | `cleaner.test.ts` | ✅ Complete (9 tests) |
+
+**Test Coverage Areas:**
+- ✅ Command instantiation
+- ✅ HTML to Markdown conversion
+- ✅ Confluence macro transformations  
+- ✅ User link resolution
+- ✅ Markdown cleanup patterns
+- ⚠️ Full command execution workflows (requires DI refactoring)
+
+See `tests/commands/README.md` for detailed test documentation.
+
+### Improving Test Coverage
+
+To enable full command testing:
+
+1. **Refactor for Dependency Injection**
+   ```typescript
+   // Instead of creating API internally:
+   export class IndexCommand implements CommandHandler {
+     async execute(context: CommandContext): Promise<void> {
+       const api = new ConfluenceApi(config); // Hard to mock
+       // ...
+     }
+   }
+   
+   // Use dependency injection:
+   export class IndexCommand implements CommandHandler {
+     constructor(private api?: ConfluenceApi) {}
+     
+     async execute(context: CommandContext): Promise<void> {
+       const api = this.api || new ConfluenceApi(config); // Easy to mock
+       // ...
+     }
+   }
+   ```
+
+2. **Add Integration Tests**
+   - Use recorded API responses (fixtures)
+   - Test full workflows end-to-end
+   - Validate file outputs
 
 ---
 
