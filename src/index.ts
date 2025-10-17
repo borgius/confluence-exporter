@@ -36,28 +36,6 @@ async function main() {
     process.exit(0);
   }
 
-  // Extract commands from positional arguments
-  const commands = args._ as string[];
-  const executor = new CommandExecutor();
-
-  // Validate commands
-  let requestedCommands: Awaited<ReturnType<typeof executor.validateCommands>>;
-  try {
-    requestedCommands = executor.validateCommands(commands);
-  } catch (error) {
-    console.error(`Error: ${error instanceof Error ? error.message : error}\n`);
-    const helpCommand = new HelpCommand();
-    await helpCommand.execute({ config: {} as ConfluenceConfig, args });
-    process.exit(1);
-  }
-
-  // Handle help command
-  if (requestedCommands.includes('help')) {
-    const helpCommand = new HelpCommand();
-    await helpCommand.execute({ config: {} as ConfluenceConfig, args });
-    process.exit(0);
-  }
-
   // Build config from args or environment variables
   const config: ConfluenceConfig = {
     baseUrl: args.url || process.env.CONFLUENCE_BASE_URL || '',
@@ -76,6 +54,29 @@ async function main() {
     console.error('Please provide all required options or set environment variables.');
     console.error('Run with --help for usage information.\n');
     process.exit(1);
+  }
+
+
+  // Extract commands from positional arguments
+  const commands = args._ as string[];
+  const executor = new CommandExecutor(config);
+
+  // Validate commands
+  let requestedCommands: Awaited<ReturnType<typeof executor.validateCommands>>;
+  try {
+    requestedCommands = executor.validateCommands(commands);
+  } catch (error) {
+    console.error(`Error: ${error instanceof Error ? error.message : error}\n`);
+    const helpCommand = new HelpCommand();
+    await helpCommand.execute({ config: {} as ConfluenceConfig, args });
+    process.exit(1);
+  }
+
+  // Handle help command
+  if (requestedCommands.includes('help')) {
+    const helpCommand = new HelpCommand();
+    await helpCommand.execute({ config: {} as ConfluenceConfig, args });
+    process.exit(0);
   }
 
   try {

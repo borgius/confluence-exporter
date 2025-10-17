@@ -2,14 +2,15 @@
  * Command executor - orchestrates command execution
  */
 
+import { ConfluenceConfig } from 'src/types.js';
 import { CommandRegistry } from './registry.js';
 import type { Command, CommandContext } from './types.js';
 
 export class CommandExecutor {
   private registry: CommandRegistry;
 
-  constructor() {
-    this.registry = new CommandRegistry();
+  constructor(private config: ConfluenceConfig) {
+    this.registry = new CommandRegistry(config);
   }
 
   /**
@@ -34,10 +35,6 @@ export class CommandExecutor {
    * Execute a sequence of commands
    */
   async executeCommands(commands: Command[], context: CommandContext): Promise<void> {
-    console.log('╔════════════════════════════════════════════════════╗');
-    console.log('║   Minimal Confluence to Markdown Exporter          ║');
-    console.log('╚════════════════════════════════════════════════════╝\n');
-
     for (let i = 0; i < commands.length; i++) {
       const command = commands[i];
       

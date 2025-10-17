@@ -6,26 +6,27 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import yaml from 'yaml';
 import { ConfluenceApi } from '../api.js';
-import type { PageIndexEntry } from '../types.js';
+import type { ConfluenceConfig, PageIndexEntry } from '../types.js';
 import type { CommandContext, CommandHandler } from './types.js';
 
 export class IndexCommand implements CommandHandler {
+  constructor(private config: ConfluenceConfig) {}
+
   async execute(context: CommandContext): Promise<void> {
-    const { config } = context;
-    const api = new ConfluenceApi(config);
+    const api = new ConfluenceApi(this.config);
 
     // Create output directory if it doesn't exist
-    await fs.mkdir(config.outputDir, { recursive: true });
+    await fs.mkdir(this.config.outputDir, { recursive: true });
 
-    console.log(`Starting indexing of space: ${config.spaceKey}`);
-    console.log(`Output directory: ${config.outputDir}\n`);
+    console.log(`Starting indexing of space: ${this.config.spaceKey}`);
+    console.log(`Output directory: ${this.config.outputDir}\n`);
 
     // Phase 1: Create _index.yaml
     console.log('Phase 1: Creating _index.yaml...');
-    await this.createIndex(api, config);
+    await this.createIndex(api, this.config);
 
     console.log(`\nIndexing complete!`);
-    console.log(`Index saved to: ${config.outputDir}/_index.yaml`);
+    console.log(`Index saved to: ${this.config.outputDir}/_index.yaml`);
   }
 
   /**

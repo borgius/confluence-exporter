@@ -8,36 +8,36 @@ import prettier from 'prettier';
 import yaml from 'yaml';
 import { ConfluenceApi } from '../api.js';
 import { slugify } from '../utils.js';
-import type { Page, PageIndexEntry } from '../types.js';
+import type { ConfluenceConfig, Page, PageIndexEntry } from '../types.js';
 import type { CommandContext, CommandHandler } from './types.js';
 
 export class DownloadCommand implements CommandHandler {
+  constructor(private config: ConfluenceConfig) {}
   async execute(context: CommandContext): Promise<void> {
-    const { config } = context;
-    const api = new ConfluenceApi(config);
+    const api = new ConfluenceApi(this.config);
 
     // Create output directory if it doesn't exist
-    await fs.mkdir(config.outputDir, { recursive: true });
+    await fs.mkdir(this.config.outputDir, { recursive: true });
 
     // If pageId is specified, export only that page
-    if (config.pageId) {
-      console.log(`Downloading single page: ${config.pageId}`);
-      console.log(`Output directory: ${config.outputDir}\n`);
+    if (this.config.pageId) {
+      console.log(`Downloading single page: ${this.config.pageId}`);
+      console.log(`Output directory: ${this.config.outputDir}\n`);
 
       try {
-        const page = await api.getPage(config.pageId);
+        const page = await api.getPage(this.config.pageId);
         console.log(`Processing: ${page.title} (${page.id})`);
-        await this.downloadPage(page, config);
+        await this.downloadPage(page, this.config);
         console.log(`\n✓ Page downloaded successfully!`);
-        console.log(`HTML file saved to: ${config.outputDir}`);
+        console.log(`HTML file saved to: ${this.config.outputDir}`);
       } catch (error) {
-        throw new Error(`Failed to download page ${config.pageId}: ${error instanceof Error ? error.message : error}`);
+        throw new Error(`Failed to download page ${this.config.pageId}: ${error instanceof Error ? error.message : error}`);
       }
       return;
     }
 
     // Check if _queue.yaml exists, require it to proceed
-    const queuePath = path.join(config.outputDir, '_queue.yaml');
+    const queuePath = path.join(this.config.outputDir, '_queue.yaml');
     
     try {
       await fs.access(queuePath);
@@ -53,13 +53,13 @@ export class DownloadCommand implements CommandHandler {
 
     // Download pages from queue
     console.log(`Starting download from ${path.basename(queuePath)}`);
-    console.log(`Output directory: ${config.outputDir}\n`);
+    console.log(`Output directory: ${this.config.outputDir}\n`);
 
     console.log(`Phase 3: Downloading HTML pages from ${path.basename(queuePath)}...`);
-    await this.downloadFromFile(queuePath, api, config);
+    await this.downloadFromFile(queuePath, api, this.config);
 
     console.log(`\nDownload complete!`);
-    console.log(`HTML files saved to: ${config.outputDir}`);
+    console.log(`HTML files saved to: ${this.config.outputDir}`);
     console.log(`Run 'transform' command to convert HTML to Markdown.`);
   }
 

@@ -8,19 +8,19 @@ import prettier from 'prettier';
 import { ConfluenceApi } from '../api.js';
 import { slugify, unslugify } from '../utils.js';
 import type { CommandContext, CommandHandler } from './types.js';
+import { ConfluenceConfig } from 'src/types.js';
 
 export class TransformCommand implements CommandHandler {
   private api!: ConfluenceApi;
-
+  constructor(private config: ConfluenceConfig) {}
   async execute(context: CommandContext): Promise<void> {
-    const { config } = context;
-    this.api = new ConfluenceApi(config);
+    this.api = new ConfluenceApi(this.config);
 
     console.log(`Transforming HTML files to Markdown...`);
-    console.log(`Output directory: ${config.outputDir}\n`);
+    console.log(`Output directory: ${this.config.outputDir}\n`);
 
     // Read all HTML files in the output directory
-    const files = await fs.readdir(config.outputDir);
+    const files = await fs.readdir(this.config.outputDir);
     const htmlFiles = files.filter(f => f.endsWith('.html') && !f.startsWith('_'));
 
     if (htmlFiles.length === 0) {
@@ -30,11 +30,11 @@ export class TransformCommand implements CommandHandler {
     }
 
     // Apply limit if specified
-    const filesToProcess = config.limit ? htmlFiles.slice(0, config.limit) : htmlFiles;
+    const filesToProcess = this.config.limit ? htmlFiles.slice(0, this.config.limit) : htmlFiles;
     
     console.log(`Found ${htmlFiles.length} HTML files`);
-    if (config.limit && htmlFiles.length > config.limit) {
-      console.log(`Limiting to first ${config.limit} files\n`);
+    if (this.config.limit && htmlFiles.length > this.config.limit) {
+      console.log(`Limiting to first ${this.config.limit} files\n`);
     } else {
       console.log();
     }
@@ -48,8 +48,8 @@ export class TransformCommand implements CommandHandler {
       const htmlFile = filesToProcess[i];
       const baseFilename = htmlFile.replace('.html', '');
       const mdFilename = `${baseFilename}.md`;
-      const htmlFilepath = path.join(config.outputDir, htmlFile);
-      const mdFilepath = path.join(config.outputDir, mdFilename);
+      const htmlFilepath = path.join(this.config.outputDir, htmlFile);
+      const mdFilepath = path.join(this.config.outputDir, mdFilename);
 
       console.log(`[${i + 1}/${filesToProcess.length}] Checking: ${htmlFile}`);
 
@@ -75,8 +75,8 @@ export class TransformCommand implements CommandHandler {
         const markdownBody = await this.htmlToMarkdown(htmlContent, baseFilename, images);
 
         // Build original page URL (use baseUrl if available)
-        const originalUrl = config.baseUrl 
-          ? `${config.baseUrl}/pages/viewpage.action?pageId=${baseFilename}`
+        const originalUrl = this.config.baseUrl
+          ? `${this.config.baseUrl}/pages/viewpage.action?pageId=${baseFilename}`
           : '';
 
         // Create front matter
@@ -93,7 +93,7 @@ export class TransformCommand implements CommandHandler {
 
         // Save images if any
         if (images.length > 0) {
-          const imagesDir = path.join(config.outputDir, 'images');
+          const imagesDir = path.join(this.config.outputDir, 'images');
           await fs.mkdir(imagesDir, { recursive: true });
           
           for (const image of images) {

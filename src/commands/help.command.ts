@@ -2,6 +2,7 @@
  * Help command handler
  */
 
+import { ConfluenceConfig } from 'src/types.js';
 import type { CommandContext, CommandHandler } from './types.js';
 
 export class HelpCommand implements CommandHandler {
