@@ -23,9 +23,6 @@ async function main() {
       o: 'output',
       i: 'pageId',
       h: 'help'
-    },
-    default: {
-      output: './output'
     }
   });
 
@@ -76,7 +73,7 @@ async function main() {
   }
 
   console.log('╔════════════════════════════════════════════════════╗');
-  console.log('║   Minimal Confluence to Markdown Exporter         ║');
+  console.log('║   Minimal Confluence to Markdown Exporter          ║');
   console.log('╚════════════════════════════════════════════════════╝\n');
 
   try {
