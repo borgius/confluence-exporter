@@ -2,23 +2,9 @@
  * Minimal HTML to Markdown transformer
  */
 
-import type { Page } from './types.js';
+import type { Page, MarkdownResult } from './types.js';
 import type { ConfluenceApi } from './api.js';
 import { MarkdownCleaner } from './cleaner.js';
-
-export interface MarkdownResult {
-  content: string;
-  frontMatter: {
-    title: string;
-    id: string;
-    version?: number;
-    parentId?: string;
-  };
-  images: Array<{
-    filename: string;
-    data: Buffer;
-  }>;
-}
 
 export class MarkdownTransformer {
   private api?: ConfluenceApi;

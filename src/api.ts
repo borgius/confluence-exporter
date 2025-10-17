@@ -2,7 +2,19 @@
  * Minimal Confluence API client
  */
 
-import type { Page, PaginatedResponse, ConfluenceConfig, User } from './types.js';
+import type { 
+  Page, 
+  PaginatedResponse, 
+  ConfluenceConfig, 
+  User,
+  PageResponse,
+  RawPage,
+  ListPagesResponse,
+  ChildPageResponse,
+  ChildPagesResponse,
+  AttachmentResult,
+  AttachmentResponse
+} from './types.js';
 
 export class ConfluenceApi {
   private baseUrl: string;
@@ -30,15 +42,6 @@ export class ConfluenceApi {
 
     if (!response.ok) {
       throw new Error(`Failed to fetch page ${pageId}: ${response.status} ${response.statusText}`);
-    }
-
-    interface PageResponse {
-      id: string;
-      title: string;
-      body?: { storage?: { value: string } };
-      version?: { number: number; when?: string };
-      ancestors?: Array<{ id: string }>;
-      history?: { lastUpdated?: { when?: string } };
     }
 
     const data = await response.json() as PageResponse;
@@ -70,25 +73,6 @@ export class ConfluenceApi {
       throw new Error(`Failed to list pages: ${response.status} ${response.statusText}`);
     }
 
-    interface RawPage {
-      id: string;
-      title: string;
-      body?: { storage?: { value: string } };
-      version?: { number: number; when?: string };
-      ancestors?: Array<{ id: string }>;
-      history?: { lastUpdated?: { when?: string } };
-    }
-
-    interface ListPagesResponse {
-      results: RawPage[];
-      start: number;
-      limit: number;
-      size: number;
-      _links?: {
-        next?: string;
-      };
-    }
-    
     const data = await response.json() as ListPagesResponse;
     
     return {
@@ -150,16 +134,6 @@ export class ConfluenceApi {
       return [];
     }
 
-    interface ChildPageResponse {
-      id: string;
-      title: string;
-      version?: { number: number };
-    }
-
-    interface ChildPagesResponse {
-      results: ChildPageResponse[];
-    }
-
     const data = await response.json() as ChildPagesResponse;
     
     return data.results.map(child => ({
@@ -188,18 +162,6 @@ export class ConfluenceApi {
       if (!response.ok) {
         console.warn(`Failed to fetch attachment metadata for ${filename}: ${response.status}`);
         return null;
-      }
-
-      interface AttachmentResult {
-        id: string;
-        title: string;
-        _links: {
-          download: string;
-        };
-      }
-
-      interface AttachmentResponse {
-        results: AttachmentResult[];
       }
 
       const data = await response.json() as AttachmentResponse;
