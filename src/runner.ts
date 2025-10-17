@@ -22,9 +22,27 @@ export class ExportRunner {
   }
 
   /**
-   * Run the export process
+   * Run the index command (Phase 1 only)
    */
-  async run(): Promise<void> {
+  async runIndex(): Promise<void> {
+    // Create output directory if it doesn't exist
+    await fs.mkdir(this.config.outputDir, { recursive: true });
+
+    console.log(`Starting indexing of space: ${this.config.spaceKey}`);
+    console.log(`Output directory: ${this.config.outputDir}\n`);
+
+    // Phase 1: Create index.yaml
+    console.log('Phase 1: Creating index.yaml...');
+    await this.createIndex();
+
+    console.log(`\nIndexing complete!`);
+    console.log(`Index saved to: ${this.config.outputDir}/index.yaml`);
+  }
+
+  /**
+   * Run the download command (Phase 2 only)
+   */
+  async runDownload(): Promise<void> {
     // Create output directory if it doesn't exist
     await fs.mkdir(this.config.outputDir, { recursive: true });
 
@@ -45,20 +63,25 @@ export class ExportRunner {
       return;
     }
 
-    // Otherwise, export entire space in two phases
-    console.log(`Starting export of space: ${this.config.spaceKey}`);
+    // Otherwise, download pages from index
+    console.log(`Starting download from index`);
     console.log(`Output directory: ${this.config.outputDir}\n`);
 
-    // Phase 1: Create index.yaml
-    console.log('Phase 1: Creating index.yaml...');
-    await this.createIndex();
-
     // Phase 2: Download pages from index
-    console.log('\nPhase 2: Downloading pages from index...');
+    console.log('Phase 2: Downloading pages from index...');
     await this.downloadFromIndex();
 
-    console.log(`\nExport complete!`);
+    console.log(`\nDownload complete!`);
     console.log(`Files saved to: ${this.config.outputDir}`);
+  }
+
+  /**
+   * Run the export process (both index and download)
+   * @deprecated Use runIndex() and runDownload() separately
+   */
+  async run(): Promise<void> {
+    await this.runIndex();
+    await this.runDownload();
   }
 
   /**

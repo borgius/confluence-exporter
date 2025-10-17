@@ -8,6 +8,42 @@ import { config as loadEnv } from 'dotenv';
 import { ExportRunner } from './runner.js';
 import type { ConfluenceConfig } from './types.js';
 
+type Command = 'help' | 'index' | 'download';
+
+function showHelp(): void {
+  console.log('Minimal Confluence to Markdown Exporter\n');
+  console.log('Usage: node index.js <command> [options]\n');
+  console.log('Commands:');
+  console.log('  help                     Show this help message');
+  console.log('  index                    Create index.yaml with page metadata');
+  console.log('  download                 Download pages from existing index.yaml');
+  console.log('  index download           Run both commands in sequence\n');
+  console.log('Options:');
+  console.log('  -u, --url <url>          Confluence base URL');
+  console.log('  -n, --username <email>   Confluence username/email');
+  console.log('  -p, --password <token>   Confluence API token');
+  console.log('  -s, --space <key>        Confluence space key');
+  console.log('  -i, --pageId <id>        Download specific page ID only (optional)');
+  console.log('  -o, --output <dir>       Output directory (default: ./output)');
+  console.log('  --pageSize <number>      Items per API page (default: 25)');
+  console.log('  -h, --help               Show this help message\n');
+  console.log('Environment Variables:');
+  console.log('  CONFLUENCE_BASE_URL');
+  console.log('  CONFLUENCE_USERNAME');
+  console.log('  CONFLUENCE_PASSWORD');
+  console.log('  CONFLUENCE_SPACE_KEY');
+  console.log('  OUTPUT_DIR\n');
+  console.log('Examples:');
+  console.log('  # Create index only');
+  console.log('  node index.js index -u https://mysite.atlassian.net -n user@example.com -p token -s MYSPACE');
+  console.log('  # Download from existing index');
+  console.log('  node index.js download -u https://mysite.atlassian.net -n user@example.com -p token -s MYSPACE');
+  console.log('  # Do both (create index then download)');
+  console.log('  node index.js index download -u https://mysite.atlassian.net -n user@example.com -p token -s MYSPACE');
+  console.log('  # Export single page (no index needed)');
+  console.log('  node index.js download -i 123456789 -u https://mysite.atlassian.net -n user@example.com -p token -s MYSPACE');
+}
+
 async function main() {
   // Load .env file if it exists
   loadEnv();
@@ -26,32 +62,32 @@ async function main() {
     }
   });
 
-  // Show help
-  if (args.help) {
-    console.log('Minimal Confluence to Markdown Exporter\n');
-    console.log('Usage: node index.js [options]\n');
-    console.log('Options:');
-    console.log('  -u, --url <url>          Confluence base URL');
-    console.log('  -n, --username <email>   Confluence username/email');
-    console.log('  -p, --password <token>   Confluence API token');
-    console.log('  -s, --space <key>        Confluence space key');
-    console.log('  -i, --pageId <id>        Download specific page ID only (optional)');
-    console.log('  -o, --output <dir>       Output directory (default: ./output)');
-    console.log('  --pageSize <number>      Items per API page (default: 25)');
-    console.log('  -h, --help               Show this help message\n');
-    console.log('Environment Variables:');
-    console.log('  CONFLUENCE_BASE_URL');
-    console.log('  CONFLUENCE_USERNAME');
-    console.log('  CONFLUENCE_PASSWORD');
-    console.log('  CONFLUENCE_SPACE_KEY');
-    console.log('  OUTPUT_DIR\n');
-    console.log('Examples:');
-    console.log('  # Export entire space');
-    console.log('  node index.js --url https://mysite.atlassian.net --username user@example.com --password mytoken --space MYSPACE');
-    console.log('  # Export single page');
-    console.log('  node index.js -u https://mysite.atlassian.net -n user@example.com -p mytoken -s MYSPACE -i 123456789');
-    console.log('  # Export with custom output directory');
-    console.log('  node index.js -u https://mysite.atlassian.net -n user@example.com -p mytoken -s MYSPACE -o ./export');
+  // Show help if requested or no commands provided
+  if (args.help || args._.length === 0) {
+    showHelp();
+    process.exit(0);
+  }
+
+  // Extract commands from positional arguments
+  const commands = args._ as string[];
+  const validCommands: Command[] = ['help', 'index', 'download'];
+  const requestedCommands: Command[] = [];
+
+  // Validate and collect commands
+  for (const cmd of commands) {
+    const command = cmd.toLowerCase();
+    if (validCommands.includes(command as Command)) {
+      requestedCommands.push(command as Command);
+    } else {
+      console.error(`Error: Unknown command "${cmd}"\n`);
+      showHelp();
+      process.exit(1);
+    }
+  }
+
+  // Handle help command
+  if (requestedCommands.includes('help')) {
+    showHelp();
     process.exit(0);
   }
 
@@ -66,7 +102,7 @@ async function main() {
     pageSize: args.pageSize ? parseInt(args.pageSize, 10) : undefined
   };
 
-  // Validate config
+  // Validate config (except for help command which doesn't need it)
   if (!config.baseUrl || !config.username || !config.password || !config.spaceKey) {
     console.error('Error: Missing required configuration.\n');
     console.error('Please provide all required options or set environment variables.');
@@ -80,12 +116,29 @@ async function main() {
 
   try {
     const runner = new ExportRunner(config);
-    await runner.run();
+
+    // Execute commands in sequence
+    for (let i = 0; i < requestedCommands.length; i++) {
+      const command = requestedCommands[i];
+      
+      if (i > 0) {
+        console.log('\n' + '─'.repeat(60) + '\n');
+      }
+
+      switch (command) {
+        case 'index':
+          await runner.runIndex();
+          break;
+        case 'download':
+          await runner.runDownload();
+          break;
+      }
+    }
     
-    console.log('\n✓ Export completed successfully!');
+    console.log('\n✓ All commands completed successfully!');
     process.exit(0);
   } catch (error) {
-    console.error('\n✗ Export failed:', error instanceof Error ? error.message : error);
+    console.error('\n✗ Command failed:', error instanceof Error ? error.message : error);
     process.exit(1);
   }
 }
