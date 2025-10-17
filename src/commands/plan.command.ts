@@ -65,7 +65,32 @@ export class PlanCommand implements CommandHandler {
   private collectPageTree(pageId: string, depth: number = 0): PageTreeNode {
     const indent = '  '.repeat(depth);
     
-    // Fetch the page
+    // Find the page in the tree
+    const node = this.findNodeInTree(this.tree, pageId);
+    if (!node) {
+      throw new Error(`Page ${pageId} not found in tree`);
+    }
+    
+    console.log(`${indent}Found page: ${node.title} (${node.id})`);
+    return node;
+  }
+
+  /**
+   * Find a node by ID in the tree structure
+   */
+  private findNodeInTree(nodes: PageTreeNode[], pageId: string): PageTreeNode | null {
+    for (const node of nodes) {
+      if (node.id === pageId) {
+        return node;
+      }
+      if (node.children && node.children.length > 0) {
+        const found = this.findNodeInTree(node.children, pageId);
+        if (found) {
+          return found;
+        }
+      }
+    }
+    return null;
   }
 
   /**
@@ -144,7 +169,7 @@ export class PlanCommand implements CommandHandler {
         roots.push(node);
       }
     }
-    this.writeTree(this.treePath, this.config, roots);
+    this.writeTree(roots);
     console.log(`✓ Complete tree structure saved: ${this.treePath}`);
 
     return roots;
@@ -153,19 +178,19 @@ export class PlanCommand implements CommandHandler {
   /**
    * Write _tree.yaml file with hierarchical structure
    */
-  private writeTree(treePath: string, config: CommandContext['config']): void {
+  private writeTree(tree: PageTreeNode[]): void {
     const header = `# Confluence Page Tree
-# Space: ${config.spaceKey}
+# Space: ${this.config.spaceKey}
 # Created: ${new Date().toISOString()}
 
 `;
 
-    const yamlContent = yaml.stringify(this.tree, {
+    const yamlContent = yaml.stringify(tree, {
       indent: 2,
       lineWidth: 0 // No line wrapping
     });
-    
-    fs.writeFileSync(treePath, header + yamlContent, 'utf-8');
+
+    fs.writeFileSync(this.treePath, header + yamlContent, 'utf-8');
   }
 
   /**
