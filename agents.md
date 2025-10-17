@@ -235,11 +235,12 @@ Fetches paginated page list from a space.
 - Includes body content (use for small exports only)
 - Returns: Results + pagination metadata
 
-#### `getAllPages(spaceKey, pageSize): AsyncGenerator<Page & {apiPageNumber}>`
+#### `getAllPages(spaceKey, pageSize, startFrom): AsyncGenerator<Page & {apiPageNumber}>`
 Memory-efficient async generator for all pages.
 - Handles pagination automatically
 - Yields pages one at a time
 - Tracks API page number for logging
+- **Resume support:** `startFrom` parameter allows starting from a specific position (efficient resume without fetching already-indexed pages)
 
 #### `getChildPages(pageId): Promise<Page[]>`
 Fetches child pages for hierarchy resolution.
@@ -294,7 +295,7 @@ npm run dev -- index -u URL -n USER -p TOKEN -s SPACE -o ./output -l 10
 - Creates output directory if missing
 - Streams all pages via `api.getAllPages()` (memory-efficient)
 - Appends each page to `_index.yaml` as YAML array entry
-- **Resume:** Automatically skips already indexed pages
+- **Resume:** Automatically resumes from where it left off by calculating the start position from existing pages (does NOT re-fetch already-indexed pages)
 - **Limit:** If `--limit` is specified, stops after indexing that many pages
 - **Logging:** `[N] Indexed: Title (ID) [API Page N]`
 

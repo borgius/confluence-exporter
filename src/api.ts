@@ -70,7 +70,7 @@ export class ConfluenceApi {
     });
 
     if (!response.ok) {
-      throw new Error(`Failed to list pages: ${response.status} ${response.statusText}`);
+      throw new Error(`Failed to list pages (${url}): ${response.status} ${response.statusText}`);
     }
 
     const data = await response.json() as ListPagesResponse;
@@ -94,10 +94,10 @@ export class ConfluenceApi {
   /**
    * Fetch all pages from a space (handles pagination)
    */
-  async *getAllPages(spaceKey: string, pageSize: number = 25): AsyncGenerator<Page & { apiPageNumber: number }> {
-    let start = 0;
+  async *getAllPages(spaceKey: string, pageSize: number = 25, startFrom: number = 0): AsyncGenerator<Page & { apiPageNumber: number }> {
+    let start = startFrom;
     const limit = pageSize;
-    let apiPageNumber = 1;
+    let apiPageNumber = Math.floor(startFrom / pageSize) + 1;
     
     while (true) {
       const response = await this.listPages(spaceKey, start, limit);

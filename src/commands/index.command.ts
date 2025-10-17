@@ -35,8 +35,8 @@ export class IndexCommand implements CommandHandler {
     const indexPath = path.join(config.outputDir, '_index.yaml');
     
     let pageCount = 0;
-    const indexedPageIds = new Set<string>();
-    let pageSize = config.pageSize || 25;
+    let pageSize = config.pageSize || 100;
+    let startFrom = 0;
     
     // Check if _index.yaml already exists (resume functionality)
     try {
@@ -53,8 +53,9 @@ export class IndexCommand implements CommandHandler {
       
       if (existingPages && Array.isArray(existingPages)) {
         pageCount = existingPages.length;
-        existingPages.forEach(page => indexedPageIds.add(page.id));
-        console.log(`Found existing index with ${pageCount} pages. Resuming from page ${pageCount + 1}...\n`);
+        // Calculate the start position for the API
+        startFrom = pageCount;
+        console.log(`Found existing index with ${pageCount} pages. Resuming from position ${startFrom + 1}...\n`);
       }
     } catch (_error) {
       // File doesn't exist or is invalid, start fresh
@@ -68,13 +69,8 @@ export class IndexCommand implements CommandHandler {
       console.log(`Creating new index with page size: ${pageSize}...\n`);
     }
     
-    // Fetch all pages metadata (without body content) and append each to the file
-    for await (const page of api.getAllPages(config.spaceKey, pageSize)) {
-      // Skip if already indexed
-      if (indexedPageIds.has(page.id)) {
-        continue;
-      }
-      
+    // Fetch pages starting from where we left off
+    for await (const page of api.getAllPages(config.spaceKey, pageSize, startFrom)) {
       pageCount++;
       console.log(`[${pageCount}] Indexed: ${page.title} (${page.id}) [API Page ${page.apiPageNumber}]`);
       
