@@ -8,20 +8,41 @@ import prettier from 'prettier';
 import { ConfluenceApi } from '../api.js';
 import { slugify, unslugify } from '../utils.js';
 import type { CommandContext, CommandHandler } from './types.js';
-import { ConfluenceConfig } from 'src/types.js';
+import type { ConfluenceConfig } from '../types.js';
 
 export class TransformCommand implements CommandHandler {
   private api!: ConfluenceApi;
   constructor(private config: ConfluenceConfig) {}
-  async execute(context: CommandContext): Promise<void> {
+  async execute(_context: CommandContext): Promise<void> {
     this.api = new ConfluenceApi(this.config);
 
     console.log(`Transforming HTML files to Markdown...`);
     console.log(`Output directory: ${this.config.outputDir}\n`);
 
-    // Read all HTML files in the output directory
-    const files = await fs.readdir(this.config.outputDir);
-    const htmlFiles = files.filter(f => f.endsWith('.html') && !f.startsWith('_'));
+    let transformedCount = 0;
+    let skippedCount = 0;
+    let errorCount = 0;
+
+    // Helper function to recursively find HTML files
+    const findHtmlFiles = async (dir: string, fileList: string[] = []): Promise<string[]> => {
+      const entries = await fs.readdir(dir, { withFileTypes: true });
+      
+      for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+        
+        if (entry.isDirectory() && !entry.name.startsWith('_') && entry.name !== 'images') {
+          // Recursively search subdirectories (skip _index, _queue, etc. and images folder)
+          await findHtmlFiles(fullPath, fileList);
+        } else if (entry.isFile() && entry.name.endsWith('.html') && !entry.name.startsWith('_')) {
+          fileList.push(fullPath);
+        }
+      }
+      
+      return fileList;
+    };
+
+    // Find all HTML files recursively
+    const htmlFiles = await findHtmlFiles(this.config.outputDir);
 
     if (htmlFiles.length === 0) {
       console.log('No HTML files found to transform.');
@@ -39,19 +60,18 @@ export class TransformCommand implements CommandHandler {
       console.log();
     }
 
-    let transformedCount = 0;
-    let skippedCount = 0;
-    let errorCount = 0;
-
     // Process each HTML file
     for (let i = 0; i < filesToProcess.length; i++) {
-      const htmlFile = filesToProcess[i];
+      const htmlFilepath = filesToProcess[i];
+      const htmlFile = path.basename(htmlFilepath);
+      const dirPath = path.dirname(htmlFilepath);
       const baseFilename = htmlFile.replace('.html', '');
       const mdFilename = `${baseFilename}.md`;
-      const htmlFilepath = path.join(this.config.outputDir, htmlFile);
-      const mdFilepath = path.join(this.config.outputDir, mdFilename);
+      const mdFilepath = path.join(dirPath, mdFilename);
 
-      console.log(`[${i + 1}/${filesToProcess.length}] Checking: ${htmlFile}`);
+      // Show relative path for better readability
+      const relativePath = path.relative(this.config.outputDir, htmlFilepath);
+      console.log(`[${i + 1}/${filesToProcess.length}] Checking: ${relativePath}`);
 
       // Check if MD file already exists
       try {
@@ -91,9 +111,9 @@ export class TransformCommand implements CommandHandler {
         // Combine front matter and content
         const markdownContent = `${frontMatter}\n\n${markdownBody}`;
 
-        // Save images if any
+        // Save images if any (in the same directory as the page)
         if (images.length > 0) {
-          const imagesDir = path.join(this.config.outputDir, 'images');
+          const imagesDir = path.join(dirPath, 'images');
           await fs.mkdir(imagesDir, { recursive: true });
           
           for (const image of images) {
@@ -232,7 +252,9 @@ export class TransformCommand implements CommandHandler {
       // Download the image if API is available
       if (this.api) {
         try {
-          const imageData = await this.api.downloadAttachment(pageId, originalFilename);
+          // URL-encode the filename for API call to handle spaces and special characters
+          const encodedImageName = encodeURIComponent(originalFilename);
+          const imageData = await this.api.downloadAttachment(pageId, encodedImageName);
           if (imageData) {
             images.push({ filename: slugifiedFilename, data: imageData });
             console.log(`  ✓ Downloaded image: ${originalFilename} -> ${slugifiedFilename}`);

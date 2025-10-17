@@ -19,6 +19,7 @@ This document provides comprehensive guidance for AI agents (like GitHub Copilot
 - ✅ Minimal dependencies (uses native Node.js fetch)
 - ✅ Command-based CLI with five commands: `help`, `index`, `plan`, `download`, `transform`
 - ✅ Four-phase export workflow (indexing → planning → downloading → transforming)
+- ✅ **Hierarchical folder structure** based on page tree (mirrors Confluence hierarchy)
 - ✅ Separate HTML download and Markdown transformation for flexibility
 - ✅ HTML to Markdown transformation with Confluence macro support
 - ✅ User link resolution with intelligent caching
@@ -328,7 +329,7 @@ npm run dev -- plan -u URL -n USER -p TOKEN -s SPACE -o ./output -l 10
 
 #### DownloadCommand (`download.command.ts`)
 ```bash
-# Download from queue
+# Download from queue (hierarchical structure if _tree.yaml exists)
 npm run dev -- download -u URL -n USER -p TOKEN -s SPACE -o ./output
 
 # Download single page directly
@@ -337,38 +338,49 @@ npm run dev -- download -i PAGE_ID -u URL -n USER -p TOKEN -s SPACE -o ./output
 **Purpose:** Download HTML pages (Phase 3)
 
 **Behavior:**
-- **Mode A (No pageId):** Requires `_queue.yaml` to exist (throws error if missing)
+- **Mode A (No pageId):** 
+  - Checks for `_tree.yaml` first (preferred for hierarchical structure)
+  - If `_tree.yaml` exists:
+    - Creates root folder: `{outputDir}/{spaceKey}/`
+    - Recursively downloads pages following tree hierarchy
+    - For pages with children: creates both HTML file AND folder with same name
+    - Children are downloaded into parent's folder
+  - If `_tree.yaml` not found:
+    - Falls back to `_queue.yaml` (flat structure)
+    - Downloads all to `outputDir` (throws error if missing)
 - **Mode B (With pageId):** Downloads single page directly (no queue needed)
 - For each page:
   1. Fetch via `api.getPage(id)`
   2. Format HTML with Prettier
-  3. Save `.html` file
+  3. Save `.html` file in appropriate directory
+  4. If page has children (in tree mode), create folder for children
 - **Limit:** If `--limit` is specified, only downloads first N pages from queue
-- **Logging:** `[N/Total] Downloading: Title (ID)`
+- **Logging:** `[N] Downloading: Title (ID)` (indented for hierarchy in tree mode)
 
-**Output:** HTML files only
+**Output:** HTML files in hierarchical folder structure (if `_tree.yaml` exists) or flat structure
 
 #### TransformCommand (`transform.command.ts`)
 ```bash
-# Transform all HTML files in output directory
+# Transform all HTML files recursively in output directory
 npm run dev -- transform -u URL -n USER -p TOKEN -s SPACE -o ./output
 ```
 **Purpose:** Transform HTML to Markdown (Phase 4)
 
 **Behavior:**
-- Scans output directory for `.html` files
+- Recursively scans output directory for `.html` files (walks folder tree)
+- Skips `_*` files and `images` folders during traversal
 - For each HTML file:
-  1. Check if corresponding `.md` file exists
+  1. Check if corresponding `.md` file exists in same directory
   2. If `.md` exists, skip (no overwrite)
   3. If `.md` missing, transform HTML to Markdown
-  4. Download images to `images/` subdirectory
+  4. Download images to `images/` subdirectory (relative to page)
   5. Apply cleaner and format with Prettier
-  6. Save `.md` file
+  6. Save `.md` file in same directory as HTML
 - **Limit:** If `--limit` is specified, only processes first N HTML files
-- **Logging:** `[N/Total] Checking: file.html`
+- **Logging:** `[N/Total] Checking: relative/path/to/file.html`
 - **Smart Skip:** Only transforms pages missing Markdown files
 
-**Output:** Markdown files and downloaded images (skips existing MD files)
+**Output:** Markdown files and downloaded images in hierarchical structure (skips existing MD files)
 
 ### Export Modes
 
@@ -397,23 +409,33 @@ When `config.pageId` is undefined (via `index`, `plan`, `download`, and `transfo
    - Write to `_queue.yaml`
 
 **Phase 3: Download Pages** (`DownloadCommand`)
-1. Check for `_queue.yaml` (required, throws error if missing)
-2. For each entry:
-   - Fetch full page via `api.getPage(id)`
-   - Format with Prettier
-   - Save .html file
-3. Log: `[N/Total] Downloading: Title (ID)`
+1. Check for `_tree.yaml` (preferred) or `_queue.yaml` (fallback)
+2. If `_tree.yaml` exists:
+   - Create root folder: `{outputDir}/{spaceKey}/`
+   - Recursively process tree structure:
+     - Download page via `api.getPage(id)` to current directory
+     - Format with Prettier
+     - Save `.html` file
+     - If page has children, create folder `{pageId}-{slug}/` and recurse
+3. If only `_queue.yaml` exists:
+   - Download pages to flat structure in `outputDir`
+   - For each entry:
+     - Fetch full page via `api.getPage(id)`
+     - Format with Prettier
+     - Save .html file
+4. Log: `[N] Downloading: Title (ID)` (indented for hierarchy)
 
 **Phase 4: Transform Pages** (`TransformCommand`)
-1. Scan output directory for .html files
-2. For each HTML file:
-   - Check if .md exists (skip if found)
+1. Recursively scan output directory for `.html` files
+2. Skip `_*` files and `images` folders
+3. For each HTML file:
+   - Check if `.md` exists in same directory (skip if found)
    - Transform HTML to markdown
-   - Download images
+   - Download images to `images/` folder (relative to page)
    - Apply cleaner
    - Format with Prettier
-   - Save .md file
-3. Log: `[N/Total] Checking: file.html`
+   - Save `.md` file in same directory
+4. Log: `[N/Total] Checking: relative/path/file.html`
 
 ### Common Workflows
 
@@ -437,16 +459,38 @@ npm run dev -- index -u URL -n USER -p TOKEN -s SPACE -o ./output
 
 ### File Structure
 
+**Hierarchical Structure (when `_tree.yaml` exists):**
+```
+outputDir/
+├── _index.yaml                    # Page index (YAML array)
+├── _queue.yaml                    # Download queue (YAML array)
+├── _tree.yaml                     # Hierarchical page tree structure
+└── PR000299/                      # Root folder (space key)
+    ├── 95956404-fcs-fidelity-charitable.html
+    ├── 95956404-fcs-fidelity-charitable.md
+    └── 95956404-fcs-fidelity-charitable/     # Folder for children
+        ├── images/                           # Images for child pages
+        │   └── logo.png
+        ├── 115361447-agile-and-resource-center.html
+        ├── 115361447-agile-and-resource-center.md
+        └── 115361447-agile-and-resource-center/  # Nested children
+            ├── 95956405-getting-started.html
+            ├── 95956405-getting-started.md
+            └── 95956405-getting-started/
+                ├── 95956406-making-a-template.html
+                └── 95956406-making-a-template.md
+```
+
+**Flat Structure (fallback when only `_queue.yaml` exists):**
 ```
 outputDir/
 ├── _index.yaml         # Page index (YAML array)
 ├── _queue.yaml         # Download queue (YAML array)
-├── _tree.yaml          # Hierarchical page tree structure (NEW)
 ├── page-title-1.md     # Formatted markdown
 ├── page-title-1.html   # Original HTML (formatted)
 ├── page-title-2.md
 ├── page-title-2.html
-└── images/
+└── images/             # Shared images folder
     ├── image-1.png
     └── image-2.jpg
 ```
