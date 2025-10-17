@@ -105,27 +105,46 @@ export class DownloadCommand implements CommandHandler {
           const indent = '  '.repeat(depth);
           totalCount++;
           
-          console.log(`${indent}[${totalCount}] Downloading: ${node.title} (${node.id})`);
+          // Check if HTML file already exists
+          const filename = `${node.id}-${slugify(node.title)}`;
+          const htmlFilepath = path.join(currentDir, `${filename}.html`);
           
+          let htmlExists = false;
           try {
-            // Fetch and download the page
-            const page = await api.getPage(node.id);
-            await this.downloadPage(page, currentDir);
+            await fs.access(htmlFilepath);
+            htmlExists = true;
+          } catch {
+            // File doesn't exist, will download
+          }
+          
+          if (htmlExists) {
+            console.log(`${indent}[${totalCount}] Skipping (exists): ${node.title} (${node.id})`);
             successCount++;
+          } else {
+            console.log(`${indent}[${totalCount}] Downloading: ${node.title} (${node.id})`);
             
-            // If node has children, create a subfolder and download children
-            if (node.children && node.children.length > 0) {
-              const folderName = `${node.id}-${slugify(node.title)}`;
-              const childDir = path.join(currentDir, folderName);
-              await fs.mkdir(childDir, { recursive: true });
-              console.log(`${indent}  → Created folder: ${folderName}/ (${node.children.length} children)`);
-              
-              // Recursively download children
-              await downloadTree(node.children, childDir, depth + 1);
+            try {
+              // Fetch and download the page
+              const page = await api.getPage(node.id);
+              await this.downloadPage(page, currentDir);
+              successCount++;
+            } catch (error) {
+              console.error(`${indent}  ✗ Failed to download ${node.title}:`, error instanceof Error ? error.message : error);
+              errorCount++;
             }
-          } catch (error) {
-            console.error(`${indent}  ✗ Failed to download ${node.title}:`, error instanceof Error ? error.message : error);
-            errorCount++;
+          }
+          
+          // If node has children, create a subfolder and process children
+          if (node.children && node.children.length > 0) {
+            const folderName = `${node.id}-${slugify(node.title)}`;
+            const childDir = path.join(currentDir, folderName);
+            await fs.mkdir(childDir, { recursive: true });
+            if (!htmlExists) {
+              console.log(`${indent}  → Created folder: ${folderName}/ (${node.children.length} children)`);
+            }
+            
+            // Recursively download children
+            await downloadTree(node.children, childDir, depth + 1);
           }
         }
       };
@@ -164,16 +183,33 @@ export class DownloadCommand implements CommandHandler {
         const entry = pagesToDownload[i];
         const pageNum = i + 1;
         
-        console.log(`[${pageNum}/${pagesToDownload.length}] Downloading: ${entry.title} (${entry.id})`);
+        // Check if HTML file already exists
+        const filename = `${entry.id}-${slugify(entry.title)}`;
+        const htmlFilepath = path.join(config.outputDir, `${filename}.html`);
         
+        let htmlExists = false;
         try {
-          // Fetch full page with body content
-          const page = await api.getPage(entry.id);
-          await this.downloadPage(page, config.outputDir);
+          await fs.access(htmlFilepath);
+          htmlExists = true;
+        } catch {
+          // File doesn't exist, will download
+        }
+        
+        if (htmlExists) {
+          console.log(`[${pageNum}/${pagesToDownload.length}] Skipping (exists): ${entry.title} (${entry.id})`);
           successCount++;
-        } catch (error) {
-          console.error(`  ✗ Failed to download ${entry.title}:`, error instanceof Error ? error.message : error);
-          errorCount++;
+        } else {
+          console.log(`[${pageNum}/${pagesToDownload.length}] Downloading: ${entry.title} (${entry.id})`);
+          
+          try {
+            // Fetch full page with body content
+            const page = await api.getPage(entry.id);
+            await this.downloadPage(page, config.outputDir);
+            successCount++;
+          } catch (error) {
+            console.error(`  ✗ Failed to download ${entry.title}:`, error instanceof Error ? error.message : error);
+            errorCount++;
+          }
         }
       }
       
