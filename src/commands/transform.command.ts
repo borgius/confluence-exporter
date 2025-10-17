@@ -344,7 +344,7 @@ export class TransformCommand implements CommandHandler {
   }
 
   /**
-   * Clean up malformed markdown patterns (from MarkdownCleaner)
+   * Clean up malformed markdown patterns
    */
   private cleanMarkdown(markdown: string): string {
     let cleaned = markdown;
