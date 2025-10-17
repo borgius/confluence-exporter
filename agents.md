@@ -310,9 +310,9 @@ Creates _queue.yaml for download.
 - Logs: `[N] Found: Title (ID)` (with indentation for hierarchy)
 
 #### `runDownload(): Promise<void>`
-Executes Phase 2 only: Downloads pages from queue or index.
+Executes Phase 2 only: Downloads pages from queue.
 - If `config.pageId` is set: Downloads single page
-- Otherwise: Prefers _queue.yaml if exists, falls back to _index.yaml
+- Otherwise: Requires _queue.yaml to exist (throws error if not found, instructs to run plan command)
 - Transforms HTML to Markdown
 - Downloads images
 - Formats with Prettier
@@ -350,7 +350,7 @@ When `config.pageId` is undefined (via `index` and `download` commands):
    - Write to `_queue.yaml`
 
 **Phase 3: Download Pages** (`runDownload()`)
-1. Check for `_queue.yaml`, fall back to `_index.yaml`
+1. Check for `_queue.yaml` (required, throws error if missing)
 2. For each entry:
    - Fetch full page via `api.getPage(id)`
    - Transform to markdown
@@ -421,7 +421,7 @@ The CLI uses a command-based architecture with four commands:
 - **`help`** - Display help information
 - **`index`** - Create _index.yaml with page metadata (Phase 1 only)
 - **`plan`** - Create _queue.yaml for download (from index or specific page tree)
-- **`download`** - Download pages from _queue.yaml (preferred) or _index.yaml (Phase 2 only)
+- **`download`** - Download pages from _queue.yaml (required, must run plan first)
 
 Commands can be chained: `node index.js index download` runs both in sequence.
 
@@ -480,7 +480,7 @@ node index.js download -u URL -n USER -p PASS -s SPACE -o DIR -i ID
 4. **`help` command**: Shows help and exits (other commands ignored)
 5. **`plan` with pageId**: Creates _queue.yaml with specified page and all children
 6. **`plan` without pageId**: Creates _queue.yaml from existing _index.yaml
-7. **`download`**: Downloads from _queue.yaml if exists, otherwise from _index.yaml
+7. **`download`**: Requires _queue.yaml to exist (errors if missing with instruction to run plan)
 
 ### Options
 

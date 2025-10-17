@@ -17,8 +17,8 @@ function showHelp(): void {
   console.log('  help                     Show this help message');
   console.log('  index                    Create _index.yaml with page metadata');
   console.log('  plan                     Create _queue.yaml for download (from index or specific page tree)');
-  console.log('  download                 Download pages from existing _index.yaml or _queue.yaml');
-  console.log('  index download           Run both commands in sequence\n');
+  console.log('  download                 Download pages from _queue.yaml (requires plan to be run first)');
+  console.log('  index plan download      Run all commands in sequence\n');
   console.log('Options:');
   console.log('  -u, --url <url>          Confluence base URL');
   console.log('  -n, --username <email>   Confluence username/email');
@@ -41,11 +41,11 @@ function showHelp(): void {
   console.log('  node index.js plan -u https://mysite.atlassian.net -n user@example.com -p token -s MYSPACE');
   console.log('  # Create download queue for specific page and all children');
   console.log('  node index.js plan -i 123456789 -u https://mysite.atlassian.net -n user@example.com -p token -s MYSPACE');
-  console.log('  # Download from existing queue or index');
+  console.log('  # Download from existing queue (requires plan first)');
   console.log('  node index.js download -u https://mysite.atlassian.net -n user@example.com -p token -s MYSPACE');
-  console.log('  # Do both (create index then download)');
-  console.log('  node index.js index download -u https://mysite.atlassian.net -n user@example.com -p token -s MYSPACE');
-  console.log('  # Export single page (no index needed)');
+  console.log('  # Do all three (create index, plan, then download)');
+  console.log('  node index.js index plan download -u https://mysite.atlassian.net -n user@example.com -p token -s MYSPACE');
+  console.log('  # Export single page (no index/plan needed)');
   console.log('  node index.js download -i 123456789 -u https://mysite.atlassian.net -n user@example.com -p token -s MYSPACE');
 }
 

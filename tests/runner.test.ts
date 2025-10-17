@@ -201,7 +201,7 @@ describe('ExportRunner', () => {
   });
 
   describe('runDownload', () => {
-    it('should prefer _queue.yaml over _index.yaml when both exist', async () => {
+    it('should use _queue.yaml when it exists', async () => {
       // Setup: Create both _index.yaml and _queue.yaml
       const indexPages: PageIndexEntry[] = [
         {
@@ -232,10 +232,7 @@ describe('ExportRunner', () => {
       await fs.writeFile(indexPath, `# Index\n\n${yaml.stringify(indexPages)}`, 'utf-8');
       await fs.writeFile(queuePath, `# Queue\n\n${yaml.stringify(queuePages)}`, 'utf-8');
 
-      // We need to actually check that it reads the queue file
-      // The test verifies file selection logic, not full download
-      
-      // Check which file gets read by looking at file access
+      // Verify queue file exists and contains expected data
       const queueAccessBefore = await fs.access(queuePath).then(() => true).catch(() => false);
       expect(queueAccessBefore).toBe(true);
       
@@ -243,10 +240,11 @@ describe('ExportRunner', () => {
       const queueContent = await fs.readFile(queuePath, 'utf-8');
       const parsedQueue = yaml.parse(queueContent) as PageIndexEntry[];
       expect(parsedQueue[0].id).toBe('500002');
+      expect(parsedQueue[0].title).toBe('Queue Page');
     });
 
-    it('should fallback to _index.yaml when _queue.yaml does not exist', async () => {
-      // Setup: Create only _index.yaml
+    it('should throw error when _queue.yaml does not exist and instruct to run plan', async () => {
+      // Setup: Create only _index.yaml (no queue)
       const indexPages: PageIndexEntry[] = [
         {
           id: '600001',
@@ -261,20 +259,17 @@ describe('ExportRunner', () => {
       const indexPath = path.join(tempDir, '_index.yaml');
       const queuePath = path.join(tempDir, '_queue.yaml');
       
-      // Write header + YAML content
+      // Write only index file
       await fs.writeFile(indexPath, `# Index\n\n${yaml.stringify(indexPages)}`, 'utf-8');
 
       // Verify queue does not exist
       const queueExists = await fs.access(queuePath).then(() => true).catch(() => false);
       expect(queueExists).toBe(false);
       
-      // Verify index exists and would be used
-      const indexExists = await fs.access(indexPath).then(() => true).catch(() => false);
-      expect(indexExists).toBe(true);
-      
-      const indexContent = await fs.readFile(indexPath, 'utf-8');
-      const parsedIndex = yaml.parse(indexContent) as PageIndexEntry[];
-      expect(parsedIndex[0].id).toBe('600001');
+      // Execute and expect error with helpful message
+      await expect(runner.runDownload()).rejects.toThrow('Queue file not found');
+      await expect(runner.runDownload()).rejects.toThrow('run the \'plan\' command first');
+      await expect(runner.runDownload()).rejects.toThrow('node index.js plan');
     });
   });
 

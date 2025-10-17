@@ -63,19 +63,22 @@ export class ExportRunner {
       return;
     }
 
-    // Check if _queue.yaml exists, use it; otherwise fall back to _index.yaml
+    // Check if _queue.yaml exists, require it to proceed
     const queuePath = path.join(this.config.outputDir, '_queue.yaml');
-    const indexPath = path.join(this.config.outputDir, '_index.yaml');
     
-    let sourcePath: string;
     try {
       await fs.access(queuePath);
-      sourcePath = queuePath;
       console.log(`Using queue file: ${queuePath}`);
     } catch {
-      sourcePath = indexPath;
-      console.log(`Queue not found, using index file: ${indexPath}`);
+      throw new Error(
+        `Queue file not found: ${queuePath}\n\n` +
+        `To start download, you need to run the 'plan' command first:\n` +
+        `  node index.js plan -u URL -n USER -p PASS -s SPACE\n\n` +
+        `This will create a _queue.yaml file with the pages to download.`
+      );
     }
+    
+    const sourcePath = queuePath;
 
     // Otherwise, download pages from source file
     console.log(`Starting download from ${path.basename(sourcePath)}`);
