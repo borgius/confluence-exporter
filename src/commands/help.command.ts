@@ -26,6 +26,7 @@ export class HelpCommand implements CommandHandler {
     console.log('  -s, --space <key>        Confluence space key');
     console.log('  -i, --pageId <id>        Download specific page ID only (optional)');
     console.log('  -o, --output <dir>       Output directory (default: ./output)');
+    console.log('  -l, --limit <number>     Limit number of pages to process (optional)');
     console.log('  --pageSize <number>      Items per API page (default: 25)');
     console.log('  -h, --help               Show this help message\n');
     console.log('Environment Variables:');
@@ -37,6 +38,8 @@ export class HelpCommand implements CommandHandler {
     console.log('Examples:');
     console.log('  # Full workflow: index, plan, download, and transform');
     console.log('  node index.js index plan download transform -u https://mysite.atlassian.net -n user@example.com -p token -s MYSPACE\n');
+    console.log('  # Full workflow with limit (process first 10 pages only)');
+    console.log('  node index.js index plan download transform -u https://mysite.atlassian.net -n user@example.com -p token -s MYSPACE -l 10\n');
     console.log('  # Create index only (Phase 1)');
     console.log('  node index.js index -u https://mysite.atlassian.net -n user@example.com -p token -s MYSPACE\n');
     console.log('  # Create download queue from existing index (Phase 2)');

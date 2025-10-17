@@ -77,17 +77,26 @@ export class DownloadCommand implements CommandHandler {
     
     console.log(`Reading from: ${filePath}`);
     console.log(`Space: ${config.spaceKey}`);
-    console.log(`Total pages to download: ${pages.length}\n`);
+    
+    // Apply limit if specified
+    const pagesToDownload = config.limit ? pages.slice(0, config.limit) : pages;
+    
+    console.log(`Total pages to download: ${pagesToDownload.length}`);
+    if (config.limit && pages.length > config.limit) {
+      console.log(`Limiting to first ${config.limit} pages (out of ${pages.length} total)\n`);
+    } else {
+      console.log();
+    }
     
     let successCount = 0;
     let errorCount = 0;
     
     // Process each page from the file
-    for (let i = 0; i < pages.length; i++) {
-      const entry = pages[i];
+    for (let i = 0; i < pagesToDownload.length; i++) {
+      const entry = pagesToDownload[i];
       const pageNum = i + 1;
       
-      console.log(`[${pageNum}/${pages.length}] Downloading: ${entry.title} (${entry.id})`);
+      console.log(`[${pageNum}/${pagesToDownload.length}] Downloading: ${entry.title} (${entry.id})`);
       
       try {
         // Fetch full page with body content

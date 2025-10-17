@@ -29,21 +29,29 @@ export class TransformCommand implements CommandHandler {
       return;
     }
 
-    console.log(`Found ${htmlFiles.length} HTML files\n`);
+    // Apply limit if specified
+    const filesToProcess = config.limit ? htmlFiles.slice(0, config.limit) : htmlFiles;
+    
+    console.log(`Found ${htmlFiles.length} HTML files`);
+    if (config.limit && htmlFiles.length > config.limit) {
+      console.log(`Limiting to first ${config.limit} files\n`);
+    } else {
+      console.log();
+    }
 
     let transformedCount = 0;
     let skippedCount = 0;
     let errorCount = 0;
 
     // Process each HTML file
-    for (let i = 0; i < htmlFiles.length; i++) {
-      const htmlFile = htmlFiles[i];
+    for (let i = 0; i < filesToProcess.length; i++) {
+      const htmlFile = filesToProcess[i];
       const baseFilename = htmlFile.replace('.html', '');
       const mdFilename = `${baseFilename}.md`;
       const htmlFilepath = path.join(config.outputDir, htmlFile);
       const mdFilepath = path.join(config.outputDir, mdFilename);
 
-      console.log(`[${i + 1}/${htmlFiles.length}] Checking: ${htmlFile}`);
+      console.log(`[${i + 1}/${filesToProcess.length}] Checking: ${htmlFile}`);
 
       // Check if MD file already exists
       try {

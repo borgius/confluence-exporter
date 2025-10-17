@@ -49,11 +49,18 @@ export class PlanCommand implements CommandHandler {
       
       console.log(`Read ${pages.length} pages from _index.yaml`);
       
+      // Apply limit if specified
+      const pagesToQueue = config.limit ? pages.slice(0, config.limit) : pages;
+      
+      if (config.limit && pages.length > config.limit) {
+        console.log(`Limiting to first ${config.limit} pages`);
+      }
+      
       // Write _queue.yaml (same format, just a copy for now)
-      await this.writeQueue(queuePath, config, pages);
+      await this.writeQueue(queuePath, config, pagesToQueue);
       
       console.log(`\n✓ Queue created: ${queuePath}`);
-      console.log(`  Total pages in queue: ${pages.length}`);
+      console.log(`  Total pages in queue: ${pagesToQueue.length}`);
     } catch (error) {
       throw new Error(`Failed to create queue from index: ${error instanceof Error ? error.message : error}`);
     }

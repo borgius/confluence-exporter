@@ -100,6 +100,12 @@ export class IndexCommand implements CommandHandler {
       }).join('\n');
       
       await fs.appendFile(indexPath, arrayItem + '\n', 'utf-8');
+      
+      // Check if limit is reached
+      if (config.limit && pageCount >= config.limit) {
+        console.log(`\n⚠ Limit reached: ${config.limit} pages indexed`);
+        break;
+      }
     }
     
     console.log(`\n✓ Index created: ${indexPath}`);

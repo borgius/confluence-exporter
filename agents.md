@@ -32,6 +32,9 @@ This document provides comprehensive guidance for AI agents (like GitHub Copilot
 # Full space export (4-phase workflow)
 npm run dev -- index plan download transform -u URL -n USER -p TOKEN -s SPACE -o ./output
 
+# Full space export with limit (process first 10 pages only)
+npm run dev -- index plan download transform -u URL -n USER -p TOKEN -s SPACE -o ./output -l 10
+
 # Single page HTML download only
 npm run dev -- download -i PAGE_ID -u URL -n USER -p TOKEN -s SPACE -o ./output
 
@@ -160,6 +163,7 @@ interface ConfluenceConfig {
   outputDir: string;       // Export destination
   pageId?: string;         // Optional: single page export
   pageSize?: number;       // Optional: pagination size (default: 25)
+  limit?: number;          // Optional: limit number of pages to process
 }
 ```
 
@@ -271,6 +275,9 @@ Displays usage information, options, and examples.
 #### IndexCommand (`index.command.ts`)
 ```bash
 npm run dev -- index -u URL -n USER -p TOKEN -s SPACE -o ./output
+
+# With limit (index only first 10 pages)
+npm run dev -- index -u URL -n USER -p TOKEN -s SPACE -o ./output -l 10
 ```
 **Purpose:** Create complete page inventory (Phase 1)
 
@@ -279,6 +286,7 @@ npm run dev -- index -u URL -n USER -p TOKEN -s SPACE -o ./output
 - Streams all pages via `api.getAllPages()` (memory-efficient)
 - Appends each page to `_index.yaml` as YAML array entry
 - **Resume:** Automatically skips already indexed pages
+- **Limit:** If `--limit` is specified, stops after indexing that many pages
 - **Logging:** `[N] Indexed: Title (ID) [API Page N]`
 
 **Output:** `_index.yaml` with metadata for all pages in space
@@ -290,6 +298,9 @@ npm run dev -- plan -u URL -n USER -p TOKEN -s SPACE -o ./output
 
 # Plan specific page tree
 npm run dev -- plan -i PAGE_ID -u URL -n USER -p TOKEN -s SPACE -o ./output
+
+# Plan with limit (first 10 pages from index)
+npm run dev -- plan -u URL -n USER -p TOKEN -s SPACE -o ./output -l 10
 ```
 **Purpose:** Create download queue (Phase 2)
 
@@ -297,6 +308,7 @@ npm run dev -- plan -i PAGE_ID -u URL -n USER -p TOKEN -s SPACE -o ./output
 - **Mode A (No pageId):** Reads `_index.yaml` → creates `_queue.yaml` (copy)
 - **Mode B (With pageId):** Fetches page tree recursively → creates `_queue.yaml`
 - Uses `collectPageTree()` for recursive hierarchy traversal
+- **Limit:** If `--limit` is specified, only includes first N pages in queue
 - **Logging:** `[N] Found: Title (ID)` (indented for hierarchy)
 
 **Output:** `_queue.yaml` with pages to download
@@ -318,6 +330,7 @@ npm run dev -- download -i PAGE_ID -u URL -n USER -p TOKEN -s SPACE -o ./output
   1. Fetch via `api.getPage(id)`
   2. Format HTML with Prettier
   3. Save `.html` file
+- **Limit:** If `--limit` is specified, only downloads first N pages from queue
 - **Logging:** `[N/Total] Downloading: Title (ID)`
 
 **Output:** HTML files only
@@ -338,6 +351,7 @@ npm run dev -- transform -u URL -n USER -p TOKEN -s SPACE -o ./output
   4. Download images to `images/` subdirectory
   5. Apply cleaner and format with Prettier
   6. Save `.md` file
+- **Limit:** If `--limit` is specified, only processes first N HTML files
 - **Logging:** `[N/Total] Checking: file.html`
 - **Smart Skip:** Only transforms pages missing Markdown files
 
@@ -548,6 +562,7 @@ node index.js download -u URL -n USER -p PASS -s SPACE -o DIR -i ID
 | `-s` | `--space` | Space key | env: `CONFLUENCE_SPACE_KEY` |
 | `-o` | `--output` | Output directory | `./output` or env: `OUTPUT_DIR` |
 | `-i` | `--pageId` | Single page ID (optional) | none |
+| `-l` | `--limit` | Limit number of pages to process | none |
 | | `--pageSize` | API page size | `25` |
 | `-h` | `--help` | Show help | |
 
