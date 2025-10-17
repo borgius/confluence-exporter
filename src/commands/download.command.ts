@@ -4,7 +4,7 @@
 
 import type { CommandHandler, CommandContext } from './types.js';
 import { ConfluenceApi } from '../api.js';
-import type { PageTreeNode, PageIndexEntry } from '../types.js';
+import type { PageTreeNode, PageIndexEntry, ConfluenceConfig } from '../types.js';
 import { join } from 'node:path';
 import { mkdir, writeFile, readFile, access } from 'node:fs/promises';
 import { parse } from 'yaml';
@@ -14,21 +14,22 @@ export class DownloadCommand implements CommandHandler {
   name = 'download';
   description = 'Download HTML pages from Confluence';
 
+  constructor(private config: ConfluenceConfig) {}
+
   async execute(context: CommandContext): Promise<void> {
-    const { config } = context;
-    const api = new ConfluenceApi(config);
+    const api = new ConfluenceApi(this.config);
 
     // Single page mode
-    if (config.pageId) {
-      console.log(`\n📄 Downloading single page: ${config.pageId}\n`);
-      await this.downloadPage(api, config.pageId);
+    if (this.config.pageId) {
+      console.log(`\n📄 Downloading single page: ${this.config.pageId}\n`);
+      await this.downloadPage(api, this.config.pageId);
       console.log('\n✅ Download complete!\n');
       return;
     }
 
     // Queue mode - check for tree first, then fallback to queue
-    const treeFile = join(config.outputDir, '_tree.yaml');
-    const queueFile = join(config.outputDir, '_queue.yaml');
+    const treeFile = join(this.config.outputDir, '_tree.yaml');
+    const queueFile = join(this.config.outputDir, '_queue.yaml');
 
     console.log(`\n🔍 Checking for tree file: ${treeFile}`);
     console.log(`🔍 Checking for queue file: ${queueFile}\n`);
@@ -55,7 +56,7 @@ export class DownloadCommand implements CommandHandler {
     if (hasTree) {
       // Use tree structure (hierarchical download)
       console.log(`\n📂 Using hierarchical structure from tree\n`);
-      await this.downloadFromTree(api, config);
+      await this.downloadFromTree(api, this.config);
     } else if (hasQueue) {
       // Fallback to flat queue structure
       console.log(`\n📋 Using flat queue from queue file\n`);
@@ -66,7 +67,7 @@ export class DownloadCommand implements CommandHandler {
       console.log(`📊 Queue contains ${queue.length} pages\n`);
       
       // Apply limit if specified
-      const pagesToProcess = config.limit ? queue.slice(0, config.limit) : queue;
+      const pagesToProcess = this.config.limit ? queue.slice(0, this.config.limit) : queue;
       
       for (let i = 0; i < pagesToProcess.length; i++) {
         const entry = pagesToProcess[i];
