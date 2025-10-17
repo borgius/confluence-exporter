@@ -35,3 +35,17 @@ export interface User {
   displayName: string;
   email?: string;
 }
+
+export interface PageIndexEntry {
+  id: string;
+  title: string;
+  version?: number;
+  parentId?: string;
+}
+
+export interface PageIndex {
+  spaceKey: string;
+  exportDate: string;
+  totalPages: number;
+  pages: PageIndexEntry[];
+}

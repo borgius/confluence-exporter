@@ -5,7 +5,8 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import prettier from 'prettier';
-import type { ConfluenceConfig, Page } from './types.js';
+import yaml from 'yaml';
+import type { ConfluenceConfig, Page, PageIndex, PageIndexEntry } from './types.js';
 import { ConfluenceApi } from './api.js';
 import { MarkdownTransformer } from './transformer.js';
 
@@ -44,26 +45,100 @@ export class ExportRunner {
       return;
     }
 
-    // Otherwise, export entire space
+    // Otherwise, export entire space in two phases
     console.log(`Starting export of space: ${this.config.spaceKey}`);
     console.log(`Output directory: ${this.config.outputDir}\n`);
 
-    let pageCount = 0;
+    // Phase 1: Create index.yaml
+    console.log('Phase 1: Creating index.yaml...');
+    await this.createIndex();
 
-    // Fetch and process all pages
+    // Phase 2: Download pages from index
+    console.log('\nPhase 2: Downloading pages from index...');
+    await this.downloadFromIndex();
+
+    console.log(`\nExport complete!`);
+    console.log(`Files saved to: ${this.config.outputDir}`);
+  }
+
+  /**
+   * Phase 1: Create index.yaml file with all pages to download
+   */
+  private async createIndex(): Promise<void> {
+    const indexPath = path.join(this.config.outputDir, 'index.yaml');
+    const pages: PageIndexEntry[] = [];
+    
+    let pageCount = 0;
+    
+    // Fetch all pages metadata (without body content)
     for await (const page of this.api.getAllPages(this.config.spaceKey)) {
       pageCount++;
-      console.log(`[${pageCount}] Processing: ${page.title} (${page.id})`);
+      console.log(`[${pageCount}] Indexed: ${page.title} (${page.id})`);
+      
+      pages.push({
+        id: page.id,
+        title: page.title,
+        version: page.version,
+        parentId: page.parentId
+      });
+    }
+    
+    // Create index object
+    const index: PageIndex = {
+      spaceKey: this.config.spaceKey,
+      exportDate: new Date().toISOString(),
+      totalPages: pages.length,
+      pages
+    };
+    
+    // Write index to YAML file
+    const yamlContent = yaml.stringify(index);
+    await fs.writeFile(indexPath, yamlContent, 'utf-8');
+    
+    console.log(`\n✓ Index created: ${indexPath}`);
+    console.log(`  Total pages indexed: ${pages.length}`);
+  }
 
+  /**
+   * Phase 2: Download pages from index.yaml
+   */
+  private async downloadFromIndex(): Promise<void> {
+    const indexPath = path.join(this.config.outputDir, 'index.yaml');
+    
+    // Read and parse index.yaml
+    const yamlContent = await fs.readFile(indexPath, 'utf-8');
+    const index = yaml.parse(yamlContent) as PageIndex;
+    
+    console.log(`Reading index from: ${indexPath}`);
+    console.log(`Space: ${index.spaceKey}`);
+    console.log(`Total pages to download: ${index.totalPages}\n`);
+    
+    let successCount = 0;
+    let errorCount = 0;
+    
+    // Process each page from the index
+    for (let i = 0; i < index.pages.length; i++) {
+      const entry = index.pages[i];
+      const pageNum = i + 1;
+      
+      console.log(`[${pageNum}/${index.totalPages}] Processing: ${entry.title} (${entry.id})`);
+      
       try {
+        // Fetch full page with body content
+        const page = await this.api.getPage(entry.id);
         await this.processPage(page);
+        successCount++;
       } catch (error) {
-        console.error(`Failed to process page ${page.id}:`, error);
+        console.error(`  ✗ Failed to process page ${entry.id}:`, error instanceof Error ? error.message : error);
+        errorCount++;
       }
     }
-
-    console.log(`\nExport complete! Processed ${pageCount} pages.`);
-    console.log(`Files saved to: ${this.config.outputDir}`);
+    
+    console.log(`\n✓ Download complete!`);
+    console.log(`  Success: ${successCount} pages`);
+    if (errorCount > 0) {
+      console.log(`  Errors: ${errorCount} pages`);
+    }
   }
 
   /**
