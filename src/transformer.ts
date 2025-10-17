@@ -5,6 +5,7 @@
 import type { Page, MarkdownResult } from './types.js';
 import type { ConfluenceApi } from './api.js';
 import { MarkdownCleaner } from './cleaner.js';
+import { slugify } from './utils.js';
 
 export class MarkdownTransformer {
   private api?: ConfluenceApi;
@@ -123,7 +124,7 @@ export class MarkdownTransformer {
       const lastDotIndex = originalFilename.lastIndexOf('.');
       const extension = lastDotIndex > 0 ? originalFilename.slice(lastDotIndex) : '';
       const baseName = lastDotIndex > 0 ? originalFilename.slice(0, lastDotIndex) : originalFilename;
-      const slugifiedFilename = this.slugify(baseName) + extension;
+      const slugifiedFilename = slugify(baseName) + extension;
       
       let replacement = `![${originalFilename}](images/${slugifiedFilename})`;
 
@@ -168,7 +169,7 @@ export class MarkdownTransformer {
           const childPages = await this.api.getChildPages(pageId);
           if (childPages.length > 0) {
             replacement = '## Child Pages\n\n' +
-              childPages.map(child => `- [${child.title}](${this.slugify(child.title)}.md)`).join('\n') +
+              childPages.map(child => `- [${child.title}](${slugify(child.title)}.md)`).join('\n') +
               '\n\n';
           }
         } catch (error) {
@@ -203,18 +204,6 @@ export class MarkdownTransformer {
       .replace(/<ac:structured-macro[^>]*ac:name="([^"]*)"[^>]*(?:\/>|>.*?<\/ac:structured-macro>)/gis, '<!-- Confluence Macro: $1 -->\n\n');
 
     return result;
-  }
-
-  /**
-   * Convert title to safe filename
-   */
-  private slugify(text: string): string {
-    return text
-      .toLowerCase()
-      .replace(/[^\w\s-]/g, '') // Remove special chars
-      .replace(/\s+/g, '-')     // Replace spaces with hyphens
-      .replace(/-+/g, '-')      // Replace multiple hyphens with single
-      .trim();
   }
 
   /**

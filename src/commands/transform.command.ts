@@ -6,6 +6,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import prettier from 'prettier';
 import { ConfluenceApi } from '../api.js';
+import { slugify, unslugify } from '../utils.js';
 import type { CommandContext, CommandHandler } from './types.js';
 
 export class TransformCommand implements CommandHandler {
@@ -59,7 +60,7 @@ export class TransformCommand implements CommandHandler {
         const htmlContent = await fs.readFile(htmlFilepath, 'utf-8');
 
         // Parse the title from filename (reverse slugification is lossy, but best effort)
-        const title = this.unslugify(baseFilename);
+        const title = unslugify(baseFilename);
 
         // Transform HTML to Markdown
         const images: Array<{ filename: string; data: Buffer }> = [];
@@ -216,7 +217,7 @@ export class TransformCommand implements CommandHandler {
       const lastDotIndex = originalFilename.lastIndexOf('.');
       const extension = lastDotIndex > 0 ? originalFilename.slice(lastDotIndex) : '';
       const baseName = lastDotIndex > 0 ? originalFilename.slice(0, lastDotIndex) : originalFilename;
-      const slugifiedFilename = this.slugify(baseName) + extension;
+      const slugifiedFilename = slugify(baseName) + extension;
       
       let replacement = `![${originalFilename}](images/${slugifiedFilename})`;
 
@@ -261,7 +262,7 @@ export class TransformCommand implements CommandHandler {
           const childPages = await this.api.getChildPages(pageId);
           if (childPages.length > 0) {
             replacement = '## Child Pages\n\n' +
-              childPages.map(child => `- [${child.title}](${this.slugify(child.title)}.md)`).join('\n') +
+              childPages.map(child => `- [${child.title}](${slugify(child.title)}.md)`).join('\n') +
               '\n\n';
           }
         } catch (error) {
@@ -443,26 +444,5 @@ export class TransformCommand implements CommandHandler {
     cleaned = cleaned.trim() + '\n';
 
     return cleaned;
-  }
-
-  /**
-   * Convert title to safe filename
-   */
-  private slugify(text: string): string {
-    return text
-      .toLowerCase()
-      .replace(/[^\w\s-]/g, '') // Remove special chars
-      .replace(/\s+/g, '-')     // Replace spaces with hyphens
-      .replace(/-+/g, '-')      // Replace multiple hyphens with single
-      .trim();
-  }
-
-  /**
-   * Attempt to reverse slugification (best effort)
-   */
-  private unslugify(slug: string): string {
-    return slug
-      .replace(/-/g, ' ')           // Replace hyphens with spaces
-      .replace(/\b\w/g, c => c.toUpperCase()); // Capitalize first letter of each word
   }
 }

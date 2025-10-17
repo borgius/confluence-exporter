@@ -7,6 +7,7 @@ import path from 'path';
 import prettier from 'prettier';
 import yaml from 'yaml';
 import { ConfluenceApi } from '../api.js';
+import { slugify } from '../utils.js';
 import type { Page, PageIndexEntry } from '../types.js';
 import type { CommandContext, CommandHandler } from './types.js';
 
@@ -94,7 +95,7 @@ export class DownloadCommand implements CommandHandler {
         await this.downloadPage(page, config);
         successCount++;
       } catch (error) {
-        console.error(`  ✗ Failed to download page ${entry.id}:`, error instanceof Error ? error.message : error);
+        console.error(`  ✗ Failed to download ${entry.title}:`, error instanceof Error ? error.message : error);
         errorCount++;
       }
     }
@@ -114,7 +115,7 @@ export class DownloadCommand implements CommandHandler {
     config: CommandContext['config']
   ): Promise<void> {
     // Create safe filename from title
-    const filename = this.slugify(page.title);
+    const filename = slugify(page.title);
     const htmlFilepath = path.join(config.outputDir, `${filename}.html`);
 
     // Format and write original HTML file
@@ -127,24 +128,12 @@ export class DownloadCommand implements CommandHandler {
         htmlWhitespaceSensitivity: 'ignore'
       });
       await fs.writeFile(htmlFilepath, formattedHtml, 'utf-8');
-      console.log(`  ✓ Saved: ${filename}.html (formatted)`);
+      console.log(`  ✓ Downloaded: ${page.title} (${page.id})`);
     } catch {
       // If formatting fails, save unformatted HTML
       console.warn(`  ⚠ Could not format HTML, saving unformatted`);
       await fs.writeFile(htmlFilepath, page.body, 'utf-8');
       console.log(`  ✓ Saved: ${filename}.html`);
     }
-  }
-
-  /**
-   * Convert title to safe filename
-   */
-  private slugify(text: string): string {
-    return text
-      .toLowerCase()
-      .replace(/[^\w\s-]/g, '') // Remove special chars
-      .replace(/\s+/g, '-')     // Replace spaces with hyphens
-      .replace(/-+/g, '-')      // Replace multiple hyphens with single
-      .trim();
   }
 }
