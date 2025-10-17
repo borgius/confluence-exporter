@@ -5,49 +5,10 @@
 
 import minimist from 'minimist';
 import { config as loadEnv } from 'dotenv';
-import { ExportRunner } from './runner.js';
+import { CommandExecutor } from './commands/executor.js';
+import { HelpCommand } from './commands/help.command.js';
 import type { ConfluenceConfig } from './types.js';
-
-type Command = 'help' | 'index' | 'download' | 'plan';
-
-function showHelp(): void {
-  console.log('Minimal Confluence to Markdown Exporter\n');
-  console.log('Usage: node index.js <command> [options]\n');
-  console.log('Commands:');
-  console.log('  help                     Show this help message');
-  console.log('  index                    Create _index.yaml with page metadata');
-  console.log('  plan                     Create _queue.yaml for download (from index or specific page tree)');
-  console.log('  download                 Download pages from _queue.yaml (requires plan to be run first)');
-  console.log('  index plan download      Run all commands in sequence\n');
-  console.log('Options:');
-  console.log('  -u, --url <url>          Confluence base URL');
-  console.log('  -n, --username <email>   Confluence username/email');
-  console.log('  -p, --password <token>   Confluence API token');
-  console.log('  -s, --space <key>        Confluence space key');
-  console.log('  -i, --pageId <id>        Download specific page ID only (optional)');
-  console.log('  -o, --output <dir>       Output directory (default: ./output)');
-  console.log('  --pageSize <number>      Items per API page (default: 25)');
-  console.log('  -h, --help               Show this help message\n');
-  console.log('Environment Variables:');
-  console.log('  CONFLUENCE_BASE_URL');
-  console.log('  CONFLUENCE_USERNAME');
-  console.log('  CONFLUENCE_PASSWORD');
-  console.log('  CONFLUENCE_SPACE_KEY');
-  console.log('  OUTPUT_DIR\n');
-  console.log('Examples:');
-  console.log('  # Create index only');
-  console.log('  node index.js index -u https://mysite.atlassian.net -n user@example.com -p token -s MYSPACE');
-  console.log('  # Create download queue from existing index');
-  console.log('  node index.js plan -u https://mysite.atlassian.net -n user@example.com -p token -s MYSPACE');
-  console.log('  # Create download queue for specific page and all children');
-  console.log('  node index.js plan -i 123456789 -u https://mysite.atlassian.net -n user@example.com -p token -s MYSPACE');
-  console.log('  # Download from existing queue (requires plan first)');
-  console.log('  node index.js download -u https://mysite.atlassian.net -n user@example.com -p token -s MYSPACE');
-  console.log('  # Do all three (create index, plan, then download)');
-  console.log('  node index.js index plan download -u https://mysite.atlassian.net -n user@example.com -p token -s MYSPACE');
-  console.log('  # Export single page (no index/plan needed)');
-  console.log('  node index.js download -i 123456789 -u https://mysite.atlassian.net -n user@example.com -p token -s MYSPACE');
-}
+import type { CommandContext } from './commands/types.js';
 
 async function main() {
   // Load .env file if it exists
@@ -69,30 +30,30 @@ async function main() {
 
   // Show help if requested or no commands provided
   if (args.help || args._.length === 0) {
-    showHelp();
+    const helpCommand = new HelpCommand();
+    await helpCommand.execute({ config: {} as ConfluenceConfig, args });
     process.exit(0);
   }
 
   // Extract commands from positional arguments
   const commands = args._ as string[];
-  const validCommands: Command[] = ['help', 'index', 'download', 'plan'];
-  const requestedCommands: Command[] = [];
+  const executor = new CommandExecutor();
 
-  // Validate and collect commands
-  for (const cmd of commands) {
-    const command = cmd.toLowerCase();
-    if (validCommands.includes(command as Command)) {
-      requestedCommands.push(command as Command);
-    } else {
-      console.error(`Error: Unknown command "${cmd}"\n`);
-      showHelp();
-      process.exit(1);
-    }
+  // Validate commands
+  let requestedCommands: Awaited<ReturnType<typeof executor.validateCommands>>;
+  try {
+    requestedCommands = executor.validateCommands(commands);
+  } catch (error) {
+    console.error(`Error: ${error instanceof Error ? error.message : error}\n`);
+    const helpCommand = new HelpCommand();
+    await helpCommand.execute({ config: {} as ConfluenceConfig, args });
+    process.exit(1);
   }
 
   // Handle help command
   if (requestedCommands.includes('help')) {
-    showHelp();
+    const helpCommand = new HelpCommand();
+    await helpCommand.execute({ config: {} as ConfluenceConfig, args });
     process.exit(0);
   }
 
@@ -115,35 +76,9 @@ async function main() {
     process.exit(1);
   }
 
-  console.log('╔════════════════════════════════════════════════════╗');
-  console.log('║   Minimal Confluence to Markdown Exporter          ║');
-  console.log('╚════════════════════════════════════════════════════╝\n');
-
   try {
-    const runner = new ExportRunner(config);
-
-    // Execute commands in sequence
-    for (let i = 0; i < requestedCommands.length; i++) {
-      const command = requestedCommands[i];
-      
-      if (i > 0) {
-        console.log('\n' + '─'.repeat(60) + '\n');
-      }
-
-      switch (command) {
-        case 'index':
-          await runner.runIndex();
-          break;
-        case 'plan':
-          await runner.runPlan();
-          break;
-        case 'download':
-          await runner.runDownload();
-          break;
-      }
-    }
-    
-    console.log('\n✓ All commands completed successfully!');
+    const context: CommandContext = { config, args };
+    await executor.executeCommands(requestedCommands, context);
     process.exit(0);
   } catch (error) {
     console.error('\n✗ Command failed:', error instanceof Error ? error.message : error);

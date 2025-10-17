@@ -38,21 +38,38 @@ src/
 ├── api.ts            # Confluence REST API client
 ├── transformer.ts    # HTML → Markdown conversion
 ├── cleaner.ts        # Post-processing cleanup
-└── runner.ts         # Export orchestration
+└── commands/         # Command handlers (modular architecture)
+    ├── types.ts      # Command-related type definitions
+    ├── help.command.ts    # Help command handler
+    ├── index.command.ts   # Index command handler
+    ├── plan.command.ts    # Plan command handler
+    ├── download.command.ts # Download command handler
+    ├── registry.ts   # Command registry (maps commands to handlers)
+    ├── executor.ts   # Command executor (orchestrates execution)
+    └── index.ts      # Exports for easy importing
 ```
 
 ### Data Flow
 
 ```
-CLI Args/Env → Config → Runner
+CLI Args/Env → Config → CommandExecutor
+                          ↓
+                   Command Handlers
                           ↓
               Phase 1: Create index.yaml
+                    (IndexCommand)
                           ↓
         API.listPages → index.yaml (YAML array)
                           ↓
-              Phase 2: Download pages
+              Phase 2: Create queue
+                    (PlanCommand)
                           ↓
-         Read index.yaml → foreach page:
+         Read index.yaml → _queue.yaml
+                          ↓
+              Phase 3: Download pages
+                   (DownloadCommand)
+                          ↓
+         Read _queue.yaml → foreach page:
                           ↓
                   API.getPage(id)
                           ↓
@@ -69,20 +86,27 @@ CLI Args/Env → Config → Runner
 
 ### Key Design Patterns
 
-1. **Two-Phase Export**
+1. **Command Pattern**
+   - Each command (help, index, plan, download) is a separate class
+   - Implements `CommandHandler` interface with `execute()` method
+   - Commands are registered in `CommandRegistry` for easy lookup
+   - `CommandExecutor` orchestrates command execution
+   - Benefits: Separation of concerns, easy to test, extensible
+
+2. **Two-Phase Export**
    - Phase 1: Create index.yaml with all page metadata
    - Phase 2: Download full page content from index
    - Benefits: Resumable, transparent progress, easy debugging
 
-2. **Async Generators**
+3. **Async Generators**
    - Used in `api.getAllPages()` for memory-efficient pagination
    - Yields pages one at a time instead of loading all into memory
 
-3. **Caching**
+4. **Caching**
    - User lookups cached in `Map<string, User>`
    - Reduces API calls for repeated user references
 
-4. **Error Handling**
+5. **Error Handling**
    - Non-fatal errors logged as warnings (e.g., failed image downloads)
    - Fatal errors throw and exit with status code 1
 
@@ -290,38 +314,45 @@ markdown = cleaner.cleanAll(markdown); // Apply all passes
 
 ---
 
-## Runner (runner.ts)
+## Commands (src/commands/)
 
-### Public Methods
+The application uses a modular command architecture where each command is self-contained.
 
-#### `runIndex(): Promise<void>`
-Executes Phase 1 only: Creates _index.yaml with page metadata.
+### Command Handlers
+
+#### IndexCommand (index.command.ts)
+**Purpose:** Creates _index.yaml with page metadata (Phase 1)
+
+**Functionality:**
 - Creates output directory
 - Streams pages via `api.getAllPages()`
 - Appends each page to _index.yaml as YAML array entry
 - Supports resume functionality (skips already indexed pages)
 - Logs: `[N] Indexed: Title (ID) [API Page N]`
 
-#### `runPlan(): Promise<void>`
-Creates _queue.yaml for download.
+#### PlanCommand (plan.command.ts)
+**Purpose:** Creates _queue.yaml for download
+
+**Functionality:**
 - If `config.pageId` is set: Creates queue for that page and all children recursively
 - Otherwise: Reads _index.yaml and creates _queue.yaml (copy)
 - Uses `collectPageTree()` to recursively fetch page hierarchy
 - Logs: `[N] Found: Title (ID)` (with indentation for hierarchy)
 
-#### `runDownload(): Promise<void>`
-Executes Phase 2 only: Downloads pages from queue.
-- If `config.pageId` is set: Downloads single page
-- Otherwise: Requires _queue.yaml to exist (throws error if not found, instructs to run plan command)
+#### DownloadCommand (download.command.ts)
+**Purpose:** Downloads pages from queue (Phase 2/3)
+
+**Functionality:**
+- If `config.pageId` is set: Downloads single page directly
+- Otherwise: Requires _queue.yaml to exist (throws error if not found)
 - Transforms HTML to Markdown
 - Downloads images
 - Formats with Prettier
 - Saves .md and .html files
 - Logs: `[N/Total] Processing: Title (ID)`
 
-#### `run(): Promise<void>` (deprecated)
-Legacy method that runs both `runIndex()` and `runDownload()` sequentially.
-Use the individual methods via CLI commands instead.
+#### HelpCommand (help.command.ts)
+**Purpose:** Displays usage information and examples
 
 ### Export Modes
 
@@ -332,15 +363,15 @@ When `config.pageId` is set (via `download` command):
 3. Save .md and .html files
 
 #### Mode 2: Full Space Export
-When `config.pageId` is undefined (via `index` and `download` commands):
+When `config.pageId` is undefined (via `index`, `plan`, and `download` commands):
 
-**Phase 1: Create Index** (`runIndex()`)
+**Phase 1: Create Index** (`IndexCommand`)
 1. Check if `_index.yaml` exists (resume if found)
 2. Stream pages via `api.getAllPages()`
 3. Append each page as YAML array entry
 4. Log: `[N] Indexed: Title (ID) [API Page N]`
 
-**Phase 2: Create Queue** (`runPlan()`)
+**Phase 2: Create Queue** (`PlanCommand`)
 1. Option A: From _index.yaml (no pageId)
    - Read `_index.yaml`
    - Copy to `_queue.yaml`
@@ -349,7 +380,7 @@ When `config.pageId` is undefined (via `index` and `download` commands):
    - Recursively fetch all children via `api.getChildPages()`
    - Write to `_queue.yaml`
 
-**Phase 3: Download Pages** (`runDownload()`)
+**Phase 3: Download Pages** (`DownloadCommand`)
 1. Check for `_queue.yaml` (required, throws error if missing)
 2. For each entry:
    - Fetch full page via `api.getPage(id)`
@@ -762,7 +793,7 @@ npm run test:coverage       # With coverage report
 
 Enable verbose logging:
 ```typescript
-// In runner.ts or api.ts
+// In command handlers or api.ts
 console.log('[DEBUG]', detailedInfo);
 ```
 
