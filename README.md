@@ -8,6 +8,7 @@ A robust, enterprise-ready tool to export Atlassian Confluence spaces to local M
 - **Incremental Updates**: Intelligent resume mode for efficient incremental exports with state tracking
 - **Attachment Support**: Download and organize page attachments with configurable thresholds and deduplication
 - **Advanced Markdown Conversion**: Convert Confluence storage format to clean, standardized Markdown with typography rules
+- **Markdown Cleanup**: Automatic post-processing to remove malformed markdown patterns from HTML conversion
 - **Smart Link Resolution**: Intelligent cross-reference linking between exported pages with user link tracking
 - **Robust Error Handling**: Comprehensive retry policies, error classification, and graceful failure recovery
 - **Performance Optimized**: Configurable concurrency with memory-efficient processing and queue management
@@ -215,6 +216,34 @@ export/
     └── Another Parent.md
 ```
 
+### Markdown Cleanup
+
+The exporter automatically cleans up malformed markdown that can result from HTML-to-Markdown conversion. This includes:
+
+- **Empty headers**: Headers with no content or only formatting markers (e.g., `## **`)
+- **Empty formatting**: Bold/italic markers with no content (e.g., `** **`)
+- **Standalone markers**: Formatting markers on their own lines
+- **Empty structures**: Empty links, list items, blockquotes, and code blocks
+- **Excessive whitespace**: Multiple consecutive blank lines and trailing spaces
+
+For more details, see [docs/markdown-cleanup.md](docs/markdown-cleanup.md).
+
+Example cleanup:
+
+**Before:**
+```markdown
+## **
+
+**
+
+Some content here
+```
+
+**After:**
+```markdown
+Some content here
+```
+
 ### Page Format
 
 Each exported page includes:
@@ -384,29 +413,32 @@ confluence-exporter \
 
 ### Test Coverage
 
-The project maintains >95% test coverage across:
+The project uses Jest for testing with comprehensive coverage:
 
-- **Unit Tests**: Core functionality and edge cases
-- **Integration Tests**: End-to-end export scenarios  
-- **Performance Tests**: Load testing and memory profiling
-- **Contract Tests**: Confluence API compatibility
+- **Unit Tests**: Core functionality (MarkdownCleaner, MarkdownTransformer)
+- **100% coverage** on MarkdownCleaner
+- **70%+ coverage** on MarkdownTransformer
+- **16 tests** across 2 test suites
 
 Run tests:
 ```bash
-# All tests
+# Run all tests
 npm test
 
-# Specific test suites
-npm run test:unit
-npm run test:integration
-npm run test:performance
+# Run tests in watch mode
+npm run test:watch
 
-# Coverage report
+# Generate coverage report
 npm run test:coverage
 ```
 
+Test files are located in the `tests/` directory:
+- `tests/cleaner.test.ts` - MarkdownCleaner tests
+- `tests/transformer.test.ts` - MarkdownTransformer tests
+
 ### Quality Assurance
 
+- **Testing Framework**: Jest with TypeScript support
 - **Linting**: ESLint with TypeScript rules
 - **Type Safety**: Full TypeScript coverage
 - **Code Formatting**: Prettier integration

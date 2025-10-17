@@ -1,16 +1,25 @@
 /** @type {import('jest').Config} */
 module.exports = {
+  preset: 'ts-jest/presets/default-esm',
   testEnvironment: 'node',
   roots: ['<rootDir>/tests'],
+  testMatch: ['**/*.test.ts'],
+  extensionsToTreatAsEsm: ['.ts'],
+  moduleNameMapper: {
+    '^(\\.{1,2}/.*)\\.js$': '$1',
+  },
   transform: {
-    '^.+\\.(ts|tsx)$': 'ts-jest'
+    '^.+\\.ts$': ['ts-jest', {
+      useESM: true,
+      tsconfig: {
+        module: 'ESNext',
+        moduleResolution: 'node',
+      },
+    }],
   },
   moduleFileExtensions: ['ts', 'js', 'json'],
-  collectCoverageFrom: ['src/**/*.{ts,js}'],
+  collectCoverageFrom: ['src/**/*.{ts,js}', '!src/**/*.test.ts'],
   coverageDirectory: 'coverage',
   testPathIgnorePatterns: ['/node_modules/', '/dist/'],
   verbose: true,
-  transformIgnorePatterns: [
-    'node_modules/(?!(p-limit|yocto-queue|unified|remark.*|vfile.*|mdast-util.*|micromark.*|unist-util.*|zwitch|longest-streak|decode-named-character-reference|character-entities|escape-string-regexp|devlop|bail|trough|is-plain-obj|textr|typograf)/)'
-  ]
 };

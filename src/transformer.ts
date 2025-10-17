@@ -4,6 +4,7 @@
 
 import type { Page } from './types.js';
 import type { ConfluenceApi } from './api.js';
+import { MarkdownCleaner } from './cleaner.js';
 
 export interface MarkdownResult {
   content: string;
@@ -21,9 +22,11 @@ export interface MarkdownResult {
 
 export class MarkdownTransformer {
   private api?: ConfluenceApi;
+  private cleaner: MarkdownCleaner;
 
   constructor(api?: ConfluenceApi) {
     this.api = api;
+    this.cleaner = new MarkdownCleaner();
   }
 
   /**
@@ -110,6 +113,9 @@ export class MarkdownTransformer {
     // Clean up extra whitespace
     markdown = markdown.replace(/\n{3,}/g, '\n\n');
     markdown = markdown.trim();
+
+    // Apply markdown cleanup to remove malformed patterns
+    markdown = this.cleaner.cleanAll(markdown);
 
     return markdown;
   }
