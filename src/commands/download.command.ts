@@ -5,7 +5,7 @@
 import type { CommandHandler, CommandContext } from './types.js';
 import { ConfluenceApi } from '../api.js';
 import type { PageTreeNode, PageIndexEntry, ConfluenceConfig } from '../types.js';
-import { join } from 'node:path';
+import path, { join } from 'node:path';
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { parse } from 'yaml';
 import { format } from 'prettier';
@@ -90,14 +90,21 @@ export class DownloadCommand implements CommandHandler {
     for (const node of tree) {
       buildPathMap(node, rootDir);
     }
+   
+    // Display first page path as tree
+    const firstPagePath = pagePathMap.get(queue[0].id);
+    if (firstPagePath) {
+      this.displayPathAsTree(path.dirname(firstPagePath), rootDir);
+    }
 
     // Download pages from queue using the path map
     for (let i = 0; i < queue.length; i++) {
       const entry = queue[i];
       const pagePath = pagePathMap.get(entry.id) || rootDir;
 
-      console.log(`[${i + 1}/${queue.length}] Downloading: ${entry.title} (${entry.id})`);
-      console.log(`  → ${pagePath}`);
+      // console.log(`[${i + 1}/${queue.length}] Downloading: ${entry.title} (${entry.id})`);
+      const deep = pagePath.split(path.sep).length - rootDir.split(path.sep).length - 1;
+      console.log(`${'  '.repeat(deep)}/${pagePath.split(path.sep).pop()} [${i + 1}/${queue.length}]`);
 
       try {
         // Create directory if it doesn't exist
@@ -109,6 +116,20 @@ export class DownloadCommand implements CommandHandler {
     }
 
     console.log('\n✅ Download complete!\n');
+  }
+
+  private displayPathAsTree(fullPath: string, rootDir: string): void {
+    // Get relative path from root
+    const relativePath = path.relative(rootDir, fullPath);
+    
+    // Split path into segments
+    const segments = relativePath.split(path.sep).filter(s => s);
+    
+    // Display each segment with proper indentation
+    for (let i = 0; i < segments.length; i++) {
+      const indent = '  '.repeat(i);
+      console.log(`${indent}/${segments[i]}`);
+    }
   }
 
   private async downloadPage(
