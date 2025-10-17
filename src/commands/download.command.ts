@@ -6,7 +6,7 @@ import type { CommandHandler, CommandContext } from './types.js';
 import { ConfluenceApi } from '../api.js';
 import type { PageTreeNode, PageIndexEntry, ConfluenceConfig } from '../types.js';
 import { join } from 'node:path';
-import { mkdir, writeFile, readFile, access } from 'node:fs/promises';
+import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { parse } from 'yaml';
 import { format } from 'prettier';
 
@@ -34,22 +34,18 @@ export class DownloadCommand implements CommandHandler {
     console.log(`\n🔍 Checking for tree file: ${treeFile}`);
     console.log(`🔍 Checking for queue file: ${queueFile}\n`);
 
-    let hasTree = false;
-    let hasQueue = false;
+    const hasTree = existsSync(treeFile);
+    const hasQueue = existsSync(queueFile);
 
-    try {
-      await access(treeFile);
-      hasTree = true;
+    if (hasTree) {
       console.log(`✅ Found tree file`);
-    } catch {
+    } else {
       console.log(`❌ Tree file not found`);
     }
 
-    try {
-      await access(queueFile);
-      hasQueue = true;
+    if (hasQueue) {
       console.log(`✅ Found queue file`);
-    } catch {
+    } else {
       console.log(`❌ Queue file not found`);
     }
 
@@ -61,7 +57,7 @@ export class DownloadCommand implements CommandHandler {
       // Fallback to flat queue structure
       console.log(`\n📋 Using flat queue from queue file\n`);
       
-      const queueContent = await readFile(queueFile, 'utf-8');
+      const queueContent = readFileSync(queueFile, 'utf-8');
       const queue = parse(queueContent) as PageIndexEntry[];
       
       console.log(`📊 Queue contains ${queue.length} pages\n`);
@@ -93,12 +89,12 @@ export class DownloadCommand implements CommandHandler {
     config: CommandContext['config']
   ): Promise<void> {
     const treeFile = join(config.outputDir, '_tree.yaml');
-    const treeContent = await readFile(treeFile, 'utf-8');
+    const treeContent = readFileSync(treeFile, 'utf-8');
     const tree = parse(treeContent) as PageTreeNode[];
 
     // Create root folder for space
     const rootDir = join(config.outputDir, config.spaceKey);
-    await mkdir(rootDir, { recursive: true });
+    mkdirSync(rootDir, { recursive: true });
 
     // Process tree recursively
     let count = 0;
@@ -114,7 +110,7 @@ export class DownloadCommand implements CommandHandler {
         if (node.children && node.children.length > 0) {
           const slug = this.slugify(node.title);
           const childDir = join(currentDir, `${node.id}-${slug}`);
-          await mkdir(childDir, { recursive: true });
+          mkdirSync(childDir, { recursive: true });
 
           for (const child of node.children) {
             await processNode(child, childDir, depth + 1);
@@ -157,7 +153,7 @@ export class DownloadCommand implements CommandHandler {
       console.warn(`⚠️  Failed to format HTML for ${page.title}, saving unformatted`);
     }
 
-    await writeFile(filepath, formattedHtml, 'utf-8');
+    writeFileSync(filepath, formattedHtml, 'utf-8');
   }
 
   private slugify(text: string): string {
