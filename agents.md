@@ -16,14 +16,27 @@ This document provides comprehensive guidance for AI agents (like GitHub Copilot
 **Purpose:** Export Confluence spaces to Markdown files with metadata preservation
 
 ### Key Features
-- Minimal dependencies (uses native Node.js fetch)
-- Command-based CLI: separate `index` and `download` phases
-- Two-phase export: indexing, downloading (can run independently)
-- HTML to Markdown transformation with macro support
-- User link resolution with caching
-- Image/attachment downloading
-- YAML-based page indexing with resume support
-- Prettier formatting for output files
+- ✅ Minimal dependencies (uses native Node.js fetch)
+- ✅ Command-based CLI with four commands: `help`, `index`, `plan`, `download`
+- ✅ Three-phase export workflow (indexing → planning → downloading)
+- ✅ HTML to Markdown transformation with Confluence macro support
+- ✅ User link resolution with intelligent caching
+- ✅ Image/attachment downloading with automatic slugification
+- ✅ YAML-based indexing with resume capability
+- ✅ Prettier formatting for consistent output
+
+### Quick Start
+
+```bash
+# Full space export (3-phase workflow)
+npm run dev -- index plan download -u URL -n USER -p TOKEN -s SPACE -o ./output
+
+# Single page export (direct download)
+npm run dev -- download -i PAGE_ID -u URL -n USER -p TOKEN -s SPACE -o ./output
+
+# Resume from existing index
+npm run dev -- plan download -u URL -n USER -p TOKEN -s SPACE -o ./output
+```
 
 ---
 
@@ -51,64 +64,73 @@ src/
 
 ### Data Flow
 
+```mermaid
+flowchart TD
+    A[CLI Args/Env] --> B[Config Validation]
+    B --> C[CommandExecutor]
+    
+    C --> D[Phase 1: IndexCommand]
+    C --> E[Phase 2: PlanCommand]
+    C --> F[Phase 3: DownloadCommand]
+    
+    D --> D1[API.getAllPages]
+    D1 --> D2[_index.yaml]
+    
+    E --> E1{Has pageId?}
+    E1 -->|Yes| E2[API.getChildPages recursively]
+    E1 -->|No| E3[Read _index.yaml]
+    E2 --> E4[_queue.yaml]
+    E3 --> E4
+    
+    F --> F1[Read _queue.yaml]
+    F1 --> F2[For each page]
+    F2 --> F3[API.getPage]
+    F3 --> F4[Transformer.transform]
+    F4 --> F5[Download images]
+    F5 --> F6[Apply cleaner]
+    F6 --> F7[Prettier format]
+    F7 --> F8[Save .md + .html]
+    
+    style D fill:#e1f5ff
+    style E fill:#fff4e1
+    style F fill:#e8f5e9
 ```
-CLI Args/Env → Config → CommandExecutor
-                          ↓
-                   Command Handlers
-                          ↓
-              Phase 1: Create index.yaml
-                    (IndexCommand)
-                          ↓
-        API.listPages → index.yaml (YAML array)
-                          ↓
-              Phase 2: Create queue
-                    (PlanCommand)
-                          ↓
-         Read index.yaml → _queue.yaml
-                          ↓
-              Phase 3: Download pages
-                   (DownloadCommand)
-                          ↓
-         Read _queue.yaml → foreach page:
-                          ↓
-                  API.getPage(id)
-                          ↓
-              Transformer.transform()
-                          ↓
-         Download attachments/images
-                          ↓
-              Apply markdown cleanup
-                          ↓
-              Format with Prettier
-                          ↓
-                Save .md and .html files
-```
+
+**Workflow Summary:**
+1. **Index Phase** - Scan space and create `_index.yaml` with all page metadata
+2. **Plan Phase** - Create `_queue.yaml` from index or specific page tree
+3. **Download Phase** - Process queue and generate markdown files
 
 ### Key Design Patterns
 
-1. **Command Pattern**
-   - Each command (help, index, plan, download) is a separate class
-   - Implements `CommandHandler` interface with `execute()` method
-   - Commands are registered in `CommandRegistry` for easy lookup
-   - `CommandExecutor` orchestrates command execution
-   - Benefits: Separation of concerns, easy to test, extensible
+#### 1. Command Pattern
+Each command is a separate class implementing `CommandHandler` interface:
+- **Benefits:** Separation of concerns, testable, extensible
+- **Registry:** `CommandRegistry` maps command names to handlers
+- **Executor:** `CommandExecutor` orchestrates command execution
+- **Commands:** `help`, `index`, `plan`, `download`
 
-2. **Two-Phase Export**
-   - Phase 1: Create index.yaml with all page metadata
-   - Phase 2: Download full page content from index
-   - Benefits: Resumable, transparent progress, easy debugging
+#### 2. Three-Phase Export Workflow
+Separates concerns for resumability and transparency:
+- **Phase 1 (Index):** Scan space → `_index.yaml` with metadata
+- **Phase 2 (Plan):** Create `_queue.yaml` from index or page tree
+- **Phase 3 (Download):** Process queue → generate markdown files
 
-3. **Async Generators**
-   - Used in `api.getAllPages()` for memory-efficient pagination
-   - Yields pages one at a time instead of loading all into memory
+#### 3. Async Generators
+Memory-efficient pagination in `api.getAllPages()`:
+- Yields pages one at a time
+- Avoids loading entire space into memory
+- Enables progress tracking
 
-4. **Caching**
-   - User lookups cached in `Map<string, User>`
-   - Reduces API calls for repeated user references
+#### 4. Smart Caching
+Optimizes API calls:
+- User lookups cached in `Map<string, User>`
+- Prevents duplicate API requests
+- Reduces export time
 
-5. **Error Handling**
-   - Non-fatal errors logged as warnings (e.g., failed image downloads)
-   - Fatal errors throw and exit with status code 1
+#### 5. Error Handling Strategy
+- **Non-fatal:** Logged as warnings (e.g., failed image downloads)
+- **Fatal:** Throw error and exit with code 1 (e.g., API auth failure)
 
 ---
 
@@ -318,41 +340,78 @@ markdown = cleaner.cleanAll(markdown); // Apply all passes
 
 The application uses a modular command architecture where each command is self-contained.
 
+### Command Reference
+
+| Command | Purpose | Output | Resume Support |
+|---------|---------|--------|----------------|
+| `help` | Display usage information | Console output | N/A |
+| `index` | Create page inventory | `_index.yaml` | ✅ Yes |
+| `plan` | Create download queue | `_queue.yaml` | ❌ No |
+| `download` | Generate markdown files | `.md` + `.html` files | ❌ No |
+
 ### Command Handlers
 
-#### IndexCommand (index.command.ts)
-**Purpose:** Creates _index.yaml with page metadata (Phase 1)
+#### HelpCommand (`help.command.ts`)
+```bash
+npm run dev -- help
+```
+Displays usage information, options, and examples.
 
-**Functionality:**
-- Creates output directory
-- Streams pages via `api.getAllPages()`
-- Appends each page to _index.yaml as YAML array entry
-- Supports resume functionality (skips already indexed pages)
-- Logs: `[N] Indexed: Title (ID) [API Page N]`
+#### IndexCommand (`index.command.ts`)
+```bash
+npm run dev -- index -u URL -n USER -p TOKEN -s SPACE -o ./output
+```
+**Purpose:** Create complete page inventory (Phase 1)
 
-#### PlanCommand (plan.command.ts)
-**Purpose:** Creates _queue.yaml for download
+**Behavior:**
+- Creates output directory if missing
+- Streams all pages via `api.getAllPages()` (memory-efficient)
+- Appends each page to `_index.yaml` as YAML array entry
+- **Resume:** Automatically skips already indexed pages
+- **Logging:** `[N] Indexed: Title (ID) [API Page N]`
 
-**Functionality:**
-- If `config.pageId` is set: Creates queue for that page and all children recursively
-- Otherwise: Reads _index.yaml and creates _queue.yaml (copy)
-- Uses `collectPageTree()` to recursively fetch page hierarchy
-- Logs: `[N] Found: Title (ID)` (with indentation for hierarchy)
+**Output:** `_index.yaml` with metadata for all pages in space
 
-#### DownloadCommand (download.command.ts)
-**Purpose:** Downloads pages from queue (Phase 2/3)
+#### PlanCommand (`plan.command.ts`)
+```bash
+# Plan entire space (from index)
+npm run dev -- plan -u URL -n USER -p TOKEN -s SPACE -o ./output
 
-**Functionality:**
-- If `config.pageId` is set: Downloads single page directly
-- Otherwise: Requires _queue.yaml to exist (throws error if not found)
-- Transforms HTML to Markdown
-- Downloads images
-- Formats with Prettier
-- Saves .md and .html files
-- Logs: `[N/Total] Processing: Title (ID)`
+# Plan specific page tree
+npm run dev -- plan -i PAGE_ID -u URL -n USER -p TOKEN -s SPACE -o ./output
+```
+**Purpose:** Create download queue (Phase 2)
 
-#### HelpCommand (help.command.ts)
-**Purpose:** Displays usage information and examples
+**Behavior:**
+- **Mode A (No pageId):** Reads `_index.yaml` → creates `_queue.yaml` (copy)
+- **Mode B (With pageId):** Fetches page tree recursively → creates `_queue.yaml`
+- Uses `collectPageTree()` for recursive hierarchy traversal
+- **Logging:** `[N] Found: Title (ID)` (indented for hierarchy)
+
+**Output:** `_queue.yaml` with pages to download
+
+#### DownloadCommand (`download.command.ts`)
+```bash
+# Download from queue
+npm run dev -- download -u URL -n USER -p TOKEN -s SPACE -o ./output
+
+# Download single page directly
+npm run dev -- download -i PAGE_ID -u URL -n USER -p TOKEN -s SPACE -o ./output
+```
+**Purpose:** Generate markdown files (Phase 3)
+
+**Behavior:**
+- **Mode A (No pageId):** Requires `_queue.yaml` to exist (throws error if missing)
+- **Mode B (With pageId):** Downloads single page directly (no queue needed)
+- For each page:
+  1. Fetch via `api.getPage(id)`
+  2. Transform HTML to Markdown
+  3. Download images to `images/` subdirectory
+  4. Format with Prettier
+  5. Save `.md` and `.html` files
+- **Logging:** `[N/Total] Processing: Title (ID)`
+
+**Output:** Markdown files, HTML files, and downloaded images
 
 ### Export Modes
 
@@ -389,6 +448,26 @@ When `config.pageId` is undefined (via `index`, `plan`, and `download` commands)
    - Format with Prettier
    - Save .md and .html files
 3. Log: `[N/Total] Processing: Title (ID)`
+
+### Common Workflows
+
+```bash
+# Workflow 1: Full space export (all phases)
+npm run dev -- index plan download -u URL -n USER -p TOKEN -s SPACE -o ./output
+
+# Workflow 2: Resume from existing index
+npm run dev -- plan download -u URL -n USER -p TOKEN -s SPACE -o ./output
+
+# Workflow 3: Export specific page and children
+npm run dev -- plan download -i PAGE_ID -u URL -n USER -p TOKEN -s SPACE -o ./output
+
+# Workflow 4: Single page only (fastest)
+npm run dev -- download -i PAGE_ID -u URL -n USER -p TOKEN -s SPACE -o ./output
+
+# Workflow 5: Re-index space (update metadata)
+rm ./output/_index.yaml
+npm run dev -- index -u URL -n USER -p TOKEN -s SPACE -o ./output
+```
 
 ### File Structure
 
@@ -449,12 +528,17 @@ Formatting failures are non-fatal (saves unformatted with warning).
 ### Command Structure
 The CLI uses a command-based architecture with four commands:
 
-- **`help`** - Display help information
-- **`index`** - Create _index.yaml with page metadata (Phase 1 only)
-- **`plan`** - Create _queue.yaml for download (from index or specific page tree)
-- **`download`** - Download pages from _queue.yaml (required, must run plan first)
+| Command | Purpose | Required Files | Output |
+|---------|---------|----------------|--------|
+| `help` | Display help | None | Console |
+| `index` | Scan space pages | None | `_index.yaml` |
+| `plan` | Create download queue | `_index.yaml` (if no pageId) | `_queue.yaml` |
+| `download` | Generate markdown | `_queue.yaml` (if no pageId) | `.md` + `.html` files |
 
-Commands can be chained: `node index.js index download` runs both in sequence.
+**Chaining:** Commands can be chained to run in sequence:
+```bash
+npm run dev -- index plan download -u URL -n USER -p TOKEN -s SPACE
+```
 
 ### Argument Parsing
 Uses `minimist` for flexible CLI arguments.
@@ -637,6 +721,75 @@ npm run rebuild                 # Clean + build
  * @throws ErrorType - When error occurs
  */
 ```
+
+### Diagrams
+
+**Using Mermaid:**
+When documenting architecture, data flows, or complex relationships, use Mermaid diagrams in markdown files. Mermaid is supported by GitHub, VS Code, and many markdown viewers.
+
+**Supported Diagram Types:**
+- `flowchart` / `graph` - Flow diagrams and directed graphs
+- `sequenceDiagram` - Sequence/interaction diagrams
+- `classDiagram` - Class relationships
+- `stateDiagram` - State machines
+- `erDiagram` - Entity-relationship diagrams
+- `gantt` - Gantt charts for timelines
+- `architecture-beta` - Architecture diagrams (experimental)
+
+**Example - Architecture Diagram:**
+```mermaid
+architecture-beta
+    service user(mdi:account)[User]
+    service cli(logos:terminal)[CLI]
+    service api(logos:aws-lambda)[Confluence API]
+    service transformer(mdi:transform)[Transformer]
+    service files(mdi:file-document)[Output Files]
+
+    user:R --> L:cli
+    cli:R --> L:api
+    cli:R --> L:transformer
+    transformer:R --> L:files
+```
+
+**Example - Flow Diagram:**
+```mermaid
+flowchart TD
+    A[CLI Args] --> B{Validate Config}
+    B -->|Valid| C[Command Executor]
+    B -->|Invalid| D[Show Error]
+    C --> E[Index Command]
+    C --> F[Plan Command]
+    C --> G[Download Command]
+    E --> H[_index.yaml]
+    F --> I[_queue.yaml]
+    G --> J[.md/.html files]
+```
+
+**Example - Sequence Diagram:**
+```mermaid
+sequenceDiagram
+    participant User
+    participant CLI
+    participant API
+    participant Transformer
+    
+    User->>CLI: Run download command
+    CLI->>API: getPage(id)
+    API-->>CLI: HTML content
+    CLI->>Transformer: transform(html)
+    Transformer->>API: downloadAttachment(image)
+    API-->>Transformer: image data
+    Transformer-->>CLI: Markdown + images
+    CLI->>User: Save files
+```
+
+**Best Practices:**
+1. Use diagrams to complement text documentation, not replace it
+2. Keep diagrams simple and focused on one concept
+3. Add descriptive labels to nodes and edges
+4. Place diagrams near the relevant text explanation
+5. Use consistent naming with code (class names, method names)
+6. Test diagram rendering in your markdown viewer
 
 ### File Organization
 
@@ -873,10 +1026,15 @@ MIT - Same as parent project
 
 **Last Updated:** October 17, 2025  
 **Agent Compatibility:** Optimized for GitHub Copilot, Claude, GPT-4  
-**Document Version:** 1.0.0
+**Document Version:** 2.0.0
 
-This document should be updated when:
-- Architecture changes significantly
-- New major features are added
-- API patterns change
-- New conventions are established
+### When to Update This Document
+
+Update `agents.md` whenever you make changes to:
+- ✏️ Project architecture or design patterns
+- ✏️ CLI commands, arguments, or workflows
+- ✏️ API methods or core functionality
+- ✏️ File structure or naming conventions
+- ✏️ Coding standards or best practices
+
+Keeping this document current ensures AI agents have accurate context for development work.
