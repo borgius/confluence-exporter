@@ -96,6 +96,17 @@ export class ExportRunner {
     const mdFilepath = path.join(this.config.outputDir, `${filename}.md`);
     const htmlFilepath = path.join(this.config.outputDir, `${filename}.html`);
 
+    // Save images if any
+    if (result.images.length > 0) {
+      const imagesDir = path.join(this.config.outputDir, 'images');
+      await fs.mkdir(imagesDir, { recursive: true });
+      
+      for (const image of result.images) {
+        const imagePath = path.join(imagesDir, image.filename);
+        await fs.writeFile(imagePath, image.data);
+      }
+    }
+
     // Format and write markdown file
     try {
       const formattedMarkdown = await prettier.format(markdownContent, {

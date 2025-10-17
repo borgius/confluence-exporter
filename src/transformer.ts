@@ -13,6 +13,10 @@ export interface MarkdownResult {
     version?: number;
     parentId?: string;
   };
+  images: Array<{
+    filename: string;
+    data: Buffer;
+  }>;
 }
 
 export class MarkdownTransformer {
@@ -26,7 +30,8 @@ export class MarkdownTransformer {
    * Transform Confluence storage format (HTML) to Markdown
    */
   async transform(page: Page): Promise<MarkdownResult> {
-    const markdown = await this.htmlToMarkdown(page.body, page.id);
+    const images: Array<{ filename: string; data: Buffer }> = [];
+    const markdown = await this.htmlToMarkdown(page.body, page.id, images);
     
     return {
       content: markdown,
@@ -35,18 +40,22 @@ export class MarkdownTransformer {
         id: page.id,
         version: page.version,
         parentId: page.parentId
-      }
+      },
+      images
     };
   }
 
   /**
    * Basic HTML to Markdown conversion
    */
-  private async htmlToMarkdown(html: string, pageId: string): Promise<string> {
+  private async htmlToMarkdown(html: string, pageId: string, images: Array<{ filename: string; data: Buffer }>): Promise<string> {
     let markdown = html;
 
     // Transform user links first (before removing ac:link)
     markdown = await this.transformUserLinks(markdown);
+
+    // Transform images and download attachments
+    markdown = await this.transformImages(markdown, pageId, images);
 
     // Transform macros to markdown equivalents (with data fetching)
     markdown = await this.transformMacros(markdown, pageId);
@@ -103,6 +112,50 @@ export class MarkdownTransformer {
     markdown = markdown.trim();
 
     return markdown;
+  }
+
+  /**
+   * Transform images and download attachments
+   */
+  private async transformImages(content: string, pageId: string, images: Array<{ filename: string; data: Buffer }>): Promise<string> {
+    let result = content;
+
+    // Match image attachments: <ac:image><ri:attachment ri:filename="..." /></ac:image>
+    const imageRegex = /<ac:image[^>]*><ri:attachment[^>]*ri:filename="([^"]+)"[^>]*\/><\/ac:image>/gi;
+    const imageMatches = Array.from(content.matchAll(imageRegex));
+
+    for (const match of imageMatches) {
+      const originalFilename = match[1];
+      
+      // Extract extension and slugify the base name
+      const lastDotIndex = originalFilename.lastIndexOf('.');
+      const extension = lastDotIndex > 0 ? originalFilename.slice(lastDotIndex) : '';
+      const baseName = lastDotIndex > 0 ? originalFilename.slice(0, lastDotIndex) : originalFilename;
+      const slugifiedFilename = this.slugify(baseName) + extension;
+      
+      let replacement = `![${originalFilename}](images/${slugifiedFilename})`;
+
+      // Download the image if API is available
+      if (this.api) {
+        try {
+          const imageData = await this.api.downloadAttachment(pageId, originalFilename);
+          if (imageData) {
+            images.push({ filename: slugifiedFilename, data: imageData });
+            console.log(`  ✓ Downloaded image: ${originalFilename} -> ${slugifiedFilename}`);
+          } else {
+            console.warn(`  ⚠ Failed to download image: ${originalFilename}`);
+            replacement = `![${originalFilename} (not found)](images/${slugifiedFilename})`;
+          }
+        } catch (error) {
+          console.warn(`  ⚠ Error downloading image ${originalFilename}:`, error);
+          replacement = `![${originalFilename} (error)](images/${slugifiedFilename})`;
+        }
+      }
+
+      result = result.replace(match[0], replacement);
+    }
+
+    return result;
   }
 
   /**

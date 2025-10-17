@@ -165,6 +165,66 @@ export class ConfluenceApi {
   }
 
   /**
+   * Download an attachment from a page
+   */
+  async downloadAttachment(pageId: string, filename: string): Promise<Buffer | null> {
+    try {
+      // First, get the attachment metadata to get the download URL
+      const url = `${this.baseUrl}/rest/api/content/${pageId}/child/attachment?filename=${encodeURIComponent(filename)}`;
+      
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': this.authHeader,
+          'Accept': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        console.warn(`Failed to fetch attachment metadata for ${filename}: ${response.status}`);
+        return null;
+      }
+
+      interface AttachmentResult {
+        id: string;
+        title: string;
+        _links: {
+          download: string;
+        };
+      }
+
+      interface AttachmentResponse {
+        results: AttachmentResult[];
+      }
+
+      const data = await response.json() as AttachmentResponse;
+      
+      if (data.results.length === 0) {
+        console.warn(`Attachment not found: ${filename}`);
+        return null;
+      }
+
+      // Download the actual file
+      const downloadUrl = `${this.baseUrl}${data.results[0]._links.download}`;
+      const downloadResponse = await fetch(downloadUrl, {
+        headers: {
+          'Authorization': this.authHeader
+        }
+      });
+
+      if (!downloadResponse.ok) {
+        console.warn(`Failed to download attachment ${filename}: ${downloadResponse.status}`);
+        return null;
+      }
+
+      const arrayBuffer = await downloadResponse.arrayBuffer();
+      return Buffer.from(arrayBuffer);
+    } catch (error) {
+      console.warn(`Error downloading attachment ${filename}:`, error);
+      return null;
+    }
+  }
+
+  /**
    * Get user information by username (with caching)
    */
   async getUserByUsername(username: string): Promise<User | null> {
