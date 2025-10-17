@@ -31,12 +31,12 @@ export class ExportRunner {
     console.log(`Starting indexing of space: ${this.config.spaceKey}`);
     console.log(`Output directory: ${this.config.outputDir}\n`);
 
-    // Phase 1: Create index.yaml
-    console.log('Phase 1: Creating index.yaml...');
+    // Phase 1: Create _index.yaml
+    console.log('Phase 1: Creating _index.yaml...');
     await this.createIndex();
 
     console.log(`\nIndexing complete!`);
-    console.log(`Index saved to: ${this.config.outputDir}/index.yaml`);
+    console.log(`Index saved to: ${this.config.outputDir}/_index.yaml`);
   }
 
   /**
@@ -63,16 +63,79 @@ export class ExportRunner {
       return;
     }
 
-    // Otherwise, download pages from index
-    console.log(`Starting download from index`);
+    // Check if _queue.yaml exists, use it; otherwise fall back to _index.yaml
+    const queuePath = path.join(this.config.outputDir, '_queue.yaml');
+    const indexPath = path.join(this.config.outputDir, '_index.yaml');
+    
+    let sourcePath: string;
+    try {
+      await fs.access(queuePath);
+      sourcePath = queuePath;
+      console.log(`Using queue file: ${queuePath}`);
+    } catch {
+      sourcePath = indexPath;
+      console.log(`Queue not found, using index file: ${indexPath}`);
+    }
+
+    // Otherwise, download pages from source file
+    console.log(`Starting download from ${path.basename(sourcePath)}`);
     console.log(`Output directory: ${this.config.outputDir}\n`);
 
-    // Phase 2: Download pages from index
-    console.log('Phase 2: Downloading pages from index...');
-    await this.downloadFromIndex();
+    // Phase 2: Download pages from source
+    console.log(`Phase 2: Downloading pages from ${path.basename(sourcePath)}...`);
+    await this.downloadFromFile(sourcePath);
 
     console.log(`\nDownload complete!`);
     console.log(`Files saved to: ${this.config.outputDir}`);
+  }
+
+  /**
+   * Run the plan command - Create _queue.yaml
+   */
+  async runPlan(): Promise<void> {
+    // Create output directory if it doesn't exist
+    await fs.mkdir(this.config.outputDir, { recursive: true });
+
+    const queuePath = path.join(this.config.outputDir, '_queue.yaml');
+
+    // If pageId is specified, create queue for that page and all children
+    if (this.config.pageId) {
+      console.log(`Creating download queue for page: ${this.config.pageId} and all children`);
+      console.log(`Output directory: ${this.config.outputDir}\n`);
+
+      try {
+        const pages = await this.collectPageTree(this.config.pageId);
+        await this.writeQueue(queuePath, pages);
+        
+        console.log(`\n✓ Queue created: ${queuePath}`);
+        console.log(`  Total pages in queue: ${pages.length}`);
+      } catch (error) {
+        throw new Error(`Failed to create queue for page ${this.config.pageId}: ${error instanceof Error ? error.message : error}`);
+      }
+      return;
+    }
+
+    // Otherwise, create queue from existing _index.yaml
+    console.log(`Creating download queue from existing index`);
+    console.log(`Output directory: ${this.config.outputDir}\n`);
+
+    const indexPath = path.join(this.config.outputDir, '_index.yaml');
+    
+    try {
+      // Read _index.yaml
+      const yamlContent = await fs.readFile(indexPath, 'utf-8');
+      const pages = yaml.parse(yamlContent) as PageIndexEntry[];
+      
+      console.log(`Read ${pages.length} pages from _index.yaml`);
+      
+      // Write _queue.yaml (same format, just a copy for now)
+      await this.writeQueue(queuePath, pages);
+      
+      console.log(`\n✓ Queue created: ${queuePath}`);
+      console.log(`  Total pages in queue: ${pages.length}`);
+    } catch (error) {
+      throw new Error(`Failed to create queue from index: ${error instanceof Error ? error.message : error}`);
+    }
   }
 
   /**
@@ -85,16 +148,16 @@ export class ExportRunner {
   }
 
   /**
-   * Phase 1: Create index.yaml file with all pages to download
+   * Phase 1: Create _index.yaml file with all pages to download
    */
   private async createIndex(): Promise<void> {
-    const indexPath = path.join(this.config.outputDir, 'index.yaml');
+    const indexPath = path.join(this.config.outputDir, '_index.yaml');
     
     let pageCount = 0;
     const indexedPageIds = new Set<string>();
     let pageSize = this.config.pageSize || 25;
     
-    // Check if index.yaml already exists (resume functionality)
+    // Check if _index.yaml already exists (resume functionality)
     try {
       const existingContent = await fs.readFile(indexPath, 'utf-8');
       
@@ -163,23 +226,21 @@ export class ExportRunner {
   }
 
   /**
-   * Phase 2: Download pages from index.yaml
+   * Phase 2: Download pages from index.yaml or queue.yaml
    */
-  private async downloadFromIndex(): Promise<void> {
-    const indexPath = path.join(this.config.outputDir, 'index.yaml');
-    
-    // Read and parse index.yaml (array format)
-    const yamlContent = await fs.readFile(indexPath, 'utf-8');
+  private async downloadFromFile(filePath: string): Promise<void> {
+    // Read and parse the YAML file (array format)
+    const yamlContent = await fs.readFile(filePath, 'utf-8');
     const pages = yaml.parse(yamlContent) as PageIndexEntry[];
     
-    console.log(`Reading index from: ${indexPath}`);
+    console.log(`Reading from: ${filePath}`);
     console.log(`Space: ${this.config.spaceKey}`);
     console.log(`Total pages to download: ${pages.length}\n`);
     
     let successCount = 0;
     let errorCount = 0;
     
-    // Process each page from the index
+    // Process each page from the file
     for (let i = 0; i < pages.length; i++) {
       const entry = pages[i];
       const pageNum = i + 1;
@@ -202,6 +263,77 @@ export class ExportRunner {
     if (errorCount > 0) {
       console.log(`  Errors: ${errorCount} pages`);
     }
+  }
+
+  /**
+   * Recursively collect a page and all its descendants
+   */
+  private async collectPageTree(pageId: string, depth: number = 0): Promise<PageIndexEntry[]> {
+    const pages: PageIndexEntry[] = [];
+    const indent = '  '.repeat(depth);
+    
+    // Fetch the page
+    const page = await this.api.getPage(pageId);
+    console.log(`${indent}[${pages.length + 1}] Found: ${page.title} (${page.id})`);
+    
+    // Add to results
+    pages.push({
+      id: page.id,
+      title: page.title,
+      version: page.version,
+      parentId: page.parentId,
+      modifiedDate: page.modifiedDate,
+      indexedDate: new Date().toISOString(),
+      pageNumber: 0 // Not from API pagination
+    });
+    
+    // Fetch child pages
+    const children = await this.api.getChildPages(pageId);
+    
+    // Recursively collect children
+    for (const child of children) {
+      const childPages = await this.collectPageTree(child.id, depth + 1);
+      pages.push(...childPages);
+    }
+    
+    return pages;
+  }
+
+  /**
+   * Write _queue.yaml file
+   */
+  private async writeQueue(queuePath: string, pages: PageIndexEntry[]): Promise<void> {
+    const header = `# Confluence Download Queue
+# Space: ${this.config.spaceKey}
+# Created: ${new Date().toISOString()}
+# Total Pages: ${pages.length}
+
+`;
+    
+    await fs.writeFile(queuePath, header, 'utf-8');
+    
+    // Write each page as YAML array entry
+    for (const page of pages) {
+      const yamlDoc = yaml.stringify(page).trim();
+      const lines = yamlDoc.split('\n');
+      const arrayItem = lines.map((line, index) => {
+        if (index === 0) {
+          return `- ${line}`;
+        }
+        return `  ${line}`;
+      }).join('\n');
+      
+      await fs.appendFile(queuePath, arrayItem + '\n', 'utf-8');
+    }
+  }
+
+  /**
+   * Phase 2: Download pages from _index.yaml
+   * @deprecated Use downloadFromFile() instead
+   */
+  private async downloadFromIndex(): Promise<void> {
+    const indexPath = path.join(this.config.outputDir, '_index.yaml');
+    await this.downloadFromFile(indexPath);
   }
 
   /**

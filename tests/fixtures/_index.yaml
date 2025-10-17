@@ -1,0 +1,38 @@
+# Confluence Export Index
+# Space: TEST
+# Export Date: 2025-10-17T10:00:00.000Z
+# Page Size: 25
+
+- id: "100001"
+  title: Parent Page 1
+  version: 1
+  modifiedDate: 2025-10-01T10:00:00.000Z
+  indexedDate: 2025-10-17T10:00:00.000Z
+  pageNumber: 1
+- id: "100002"
+  title: Parent Page 2
+  version: 2
+  parentId: "100001"
+  modifiedDate: 2025-10-02T10:00:00.000Z
+  indexedDate: 2025-10-17T10:00:01.000Z
+  pageNumber: 1
+- id: "100003"
+  title: Parent Page 3
+  version: 3
+  modifiedDate: 2025-10-03T10:00:00.000Z
+  indexedDate: 2025-10-17T10:00:02.000Z
+  pageNumber: 1
+- id: "100004"
+  title: Child Page A
+  version: 1
+  parentId: "100001"
+  modifiedDate: 2025-10-04T10:00:00.000Z
+  indexedDate: 2025-10-17T10:00:03.000Z
+  pageNumber: 2
+- id: "100005"
+  title: Child Page B
+  version: 1
+  parentId: "100002"
+  modifiedDate: 2025-10-05T10:00:00.000Z
+  indexedDate: 2025-10-17T10:00:04.000Z
+  pageNumber: 2

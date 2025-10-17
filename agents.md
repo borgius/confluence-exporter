@@ -295,17 +295,24 @@ markdown = cleaner.cleanAll(markdown); // Apply all passes
 ### Public Methods
 
 #### `runIndex(): Promise<void>`
-Executes Phase 1 only: Creates index.yaml with page metadata.
+Executes Phase 1 only: Creates _index.yaml with page metadata.
 - Creates output directory
 - Streams pages via `api.getAllPages()`
-- Appends each page to index.yaml as YAML array entry
+- Appends each page to _index.yaml as YAML array entry
 - Supports resume functionality (skips already indexed pages)
 - Logs: `[N] Indexed: Title (ID) [API Page N]`
 
+#### `runPlan(): Promise<void>`
+Creates _queue.yaml for download.
+- If `config.pageId` is set: Creates queue for that page and all children recursively
+- Otherwise: Reads _index.yaml and creates _queue.yaml (copy)
+- Uses `collectPageTree()` to recursively fetch page hierarchy
+- Logs: `[N] Found: Title (ID)` (with indentation for hierarchy)
+
 #### `runDownload(): Promise<void>`
-Executes Phase 2 only: Downloads pages from index or single page.
+Executes Phase 2 only: Downloads pages from queue or index.
 - If `config.pageId` is set: Downloads single page
-- Otherwise: Reads index.yaml and downloads all pages
+- Otherwise: Prefers _queue.yaml if exists, falls back to _index.yaml
 - Transforms HTML to Markdown
 - Downloads images
 - Formats with Prettier
@@ -328,13 +335,22 @@ When `config.pageId` is set (via `download` command):
 When `config.pageId` is undefined (via `index` and `download` commands):
 
 **Phase 1: Create Index** (`runIndex()`)
-1. Check if `index.yaml` exists (resume if found)
+1. Check if `_index.yaml` exists (resume if found)
 2. Stream pages via `api.getAllPages()`
 3. Append each page as YAML array entry
 4. Log: `[N] Indexed: Title (ID) [API Page N]`
 
-**Phase 2: Download Pages** (`runDownload()`)
-1. Parse `index.yaml` as array
+**Phase 2: Create Queue** (`runPlan()`)
+1. Option A: From _index.yaml (no pageId)
+   - Read `_index.yaml`
+   - Copy to `_queue.yaml`
+2. Option B: From specific page tree (with pageId)
+   - Fetch page via `api.getPage(pageId)`
+   - Recursively fetch all children via `api.getChildPages()`
+   - Write to `_queue.yaml`
+
+**Phase 3: Download Pages** (`runDownload()`)
+1. Check for `_queue.yaml`, fall back to `_index.yaml`
 2. For each entry:
    - Fetch full page via `api.getPage(id)`
    - Transform to markdown
@@ -347,7 +363,8 @@ When `config.pageId` is undefined (via `index` and `download` commands):
 
 ```
 outputDir/
-├── index.yaml          # Page index (YAML array)
+├── _index.yaml         # Page index (YAML array)
+├── _queue.yaml         # Download queue (YAML array)
 ├── page-title-1.md     # Formatted markdown
 ├── page-title-1.html   # Original HTML (formatted)
 ├── page-title-2.md
@@ -399,11 +416,12 @@ Formatting failures are non-fatal (saves unformatted with warning).
 ## CLI (index.ts)
 
 ### Command Structure
-The CLI uses a command-based architecture with three commands:
+The CLI uses a command-based architecture with four commands:
 
 - **`help`** - Display help information
-- **`index`** - Create index.yaml with page metadata (Phase 1 only)
-- **`download`** - Download pages from index or single page (Phase 2 only)
+- **`index`** - Create _index.yaml with page metadata (Phase 1 only)
+- **`plan`** - Create _queue.yaml for download (from index or specific page tree)
+- **`download`** - Download pages from _queue.yaml (preferred) or _index.yaml (Phase 2 only)
 
 Commands can be chained: `node index.js index download` runs both in sequence.
 
@@ -423,7 +441,21 @@ node index.js index -u https://site.atlassian.net \
               -s MYSPACE \
               -o ./export
 
-# Download from existing index (Phase 2)
+# Create queue from existing index
+node index.js plan -u https://site.atlassian.net \
+              -n user@example.com \
+              -p token123 \
+              -s MYSPACE \
+              -o ./export
+
+# Create queue for specific page and all children
+node index.js plan -i 123456789 -u https://site.atlassian.net \
+              -n user@example.com \
+              -p token123 \
+              -s MYSPACE \
+              -o ./export
+
+# Download from existing queue or index (Phase 2)
 node index.js download -u https://site.atlassian.net \
               -n user@example.com \
               -p token123 \
@@ -433,7 +465,7 @@ node index.js download -u https://site.atlassian.net \
 # Run both phases in sequence
 node index.js index download -u URL -n USER -p PASS -s SPACE
 
-# Download single page (no index needed)
+# Download single page (no index/queue needed)
 node index.js download -i 123456789 -u URL -n USER -p PASS -s SPACE
 
 # Short flags
@@ -446,6 +478,9 @@ node index.js download -u URL -n USER -p PASS -s SPACE -o DIR -i ID
 2. **Invalid command**: Shows error + help and exits with code 1
 3. **Multiple commands**: Executes in sequence with visual separators
 4. **`help` command**: Shows help and exits (other commands ignored)
+5. **`plan` with pageId**: Creates _queue.yaml with specified page and all children
+6. **`plan` without pageId**: Creates _queue.yaml from existing _index.yaml
+7. **`download`**: Downloads from _queue.yaml if exists, otherwise from _index.yaml
 
 ### Options
 

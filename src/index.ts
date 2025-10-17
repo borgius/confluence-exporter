@@ -8,15 +8,16 @@ import { config as loadEnv } from 'dotenv';
 import { ExportRunner } from './runner.js';
 import type { ConfluenceConfig } from './types.js';
 
-type Command = 'help' | 'index' | 'download';
+type Command = 'help' | 'index' | 'download' | 'plan';
 
 function showHelp(): void {
   console.log('Minimal Confluence to Markdown Exporter\n');
   console.log('Usage: node index.js <command> [options]\n');
   console.log('Commands:');
   console.log('  help                     Show this help message');
-  console.log('  index                    Create index.yaml with page metadata');
-  console.log('  download                 Download pages from existing index.yaml');
+  console.log('  index                    Create _index.yaml with page metadata');
+  console.log('  plan                     Create _queue.yaml for download (from index or specific page tree)');
+  console.log('  download                 Download pages from existing _index.yaml or _queue.yaml');
   console.log('  index download           Run both commands in sequence\n');
   console.log('Options:');
   console.log('  -u, --url <url>          Confluence base URL');
@@ -36,7 +37,11 @@ function showHelp(): void {
   console.log('Examples:');
   console.log('  # Create index only');
   console.log('  node index.js index -u https://mysite.atlassian.net -n user@example.com -p token -s MYSPACE');
-  console.log('  # Download from existing index');
+  console.log('  # Create download queue from existing index');
+  console.log('  node index.js plan -u https://mysite.atlassian.net -n user@example.com -p token -s MYSPACE');
+  console.log('  # Create download queue for specific page and all children');
+  console.log('  node index.js plan -i 123456789 -u https://mysite.atlassian.net -n user@example.com -p token -s MYSPACE');
+  console.log('  # Download from existing queue or index');
   console.log('  node index.js download -u https://mysite.atlassian.net -n user@example.com -p token -s MYSPACE');
   console.log('  # Do both (create index then download)');
   console.log('  node index.js index download -u https://mysite.atlassian.net -n user@example.com -p token -s MYSPACE');
@@ -70,7 +75,7 @@ async function main() {
 
   // Extract commands from positional arguments
   const commands = args._ as string[];
-  const validCommands: Command[] = ['help', 'index', 'download'];
+  const validCommands: Command[] = ['help', 'index', 'download', 'plan'];
   const requestedCommands: Command[] = [];
 
   // Validate and collect commands
@@ -128,6 +133,9 @@ async function main() {
       switch (command) {
         case 'index':
           await runner.runIndex();
+          break;
+        case 'plan':
+          await runner.runPlan();
           break;
         case 'download':
           await runner.runDownload();
