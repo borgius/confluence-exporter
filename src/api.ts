@@ -59,8 +59,8 @@ export class ConfluenceApi {
   /**
    * List all pages in a space
    */
-  async listPages(spaceKey: string, start: number = 0, limit: number = 25): Promise<PaginatedResponse<Page>> {
-    const url = `${this.baseUrl}/rest/api/content?spaceKey=${spaceKey}&type=page&expand=body.storage,version,history.lastUpdated&start=${start}&limit=${limit}`;
+  async listPages(spaceKey: string, start: number = 0, limit: number = 100): Promise<PaginatedResponse<Page>> {
+    const url = `${this.baseUrl}/rest/api/content?spaceKey=${spaceKey}&type=page&expand=body.storage,version,history.lastUpdated,ancestors&start=${start}&limit=${limit}`;
     
     const response = await fetch(url, {
       headers: {

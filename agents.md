@@ -88,7 +88,7 @@ flowchart TD
     E --> E1{Has pageId?}
     E1 -->|Yes| E2[API.getChildPages recursively]
     E1 -->|No| E3[Read _index.yaml]
-    E2 --> E4[_queue.yaml]
+    E2 --> E4[_queue.yaml + _tree.yaml]
     E3 --> E4
     
     F --> F1[Read _queue.yaml]
@@ -187,6 +187,15 @@ interface PageIndexEntry {
   indexedDate: string;     // When indexed
   pageNumber: number;      // API page number
 }
+
+interface PageTreeNode {
+  id: string;
+  title: string;
+  version?: number;
+  parentId?: string;
+  modifiedDate?: string;
+  children?: PageTreeNode[];  // Hierarchical structure
+}
 ```
 
 ### Transformation
@@ -260,7 +269,7 @@ The application uses a modular command architecture where each command is self-c
 |---------|---------|--------|----------------|
 | `help` | Display usage information | Console output | N/A |
 | `index` | Create page inventory | `_index.yaml` | ✅ Yes |
-| `plan` | Create download queue | `_queue.yaml` | ❌ No |
+| `plan` | Create download queue and tree | `_queue.yaml` + `_tree.yaml` | ❌ No |
 | `download` | Download HTML pages | `.html` files | ❌ No |
 | `transform` | Transform HTML to Markdown | `.md` files + images | ✅ Yes (skips existing) |
 
@@ -302,16 +311,19 @@ npm run dev -- plan -i PAGE_ID -u URL -n USER -p TOKEN -s SPACE -o ./output
 # Plan with limit (first 10 pages from index)
 npm run dev -- plan -u URL -n USER -p TOKEN -s SPACE -o ./output -l 10
 ```
-**Purpose:** Create download queue (Phase 2)
+**Purpose:** Create download queue and tree structure (Phase 2)
 
 **Behavior:**
-- **Mode A (No pageId):** Reads `_index.yaml` → creates `_queue.yaml` (copy)
-- **Mode B (With pageId):** Fetches page tree recursively → creates `_queue.yaml`
+- **Mode A (No pageId):** Reads `_index.yaml` → creates `_queue.yaml` (flat) + `_tree.yaml` (hierarchical)
+- **Mode B (With pageId):** Fetches page tree recursively → creates `_queue.yaml` + `_tree.yaml`
 - Uses `collectPageTree()` for recursive hierarchy traversal
+- Uses `buildTreeFromIndex()` to construct tree from flat index
 - **Limit:** If `--limit` is specified, only includes first N pages in queue
 - **Logging:** `[N] Found: Title (ID)` (indented for hierarchy)
 
-**Output:** `_queue.yaml` with pages to download
+**Output:** 
+- `_queue.yaml` - Flat list of pages to download (depth-first order)
+- `_tree.yaml` - Hierarchical tree structure showing parent-child relationships
 
 #### DownloadCommand (`download.command.ts`)
 ```bash
@@ -428,6 +440,7 @@ npm run dev -- index -u URL -n USER -p TOKEN -s SPACE -o ./output
 outputDir/
 ├── _index.yaml         # Page index (YAML array)
 ├── _queue.yaml         # Download queue (YAML array)
+├── _tree.yaml          # Hierarchical page tree structure (NEW)
 ├── page-title-1.md     # Formatted markdown
 ├── page-title-1.html   # Original HTML (formatted)
 ├── page-title-2.md

@@ -6,7 +6,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import yaml from 'yaml';
 import { ConfluenceApi } from '../api.js';
-import type { PageIndexEntry } from '../types.js';
+import type { PageIndexEntry, PageTreeNode } from '../types.js';
 import type { CommandContext, CommandHandler } from './types.js';
 
 export class PlanCommand implements CommandHandler {
@@ -18,6 +18,7 @@ export class PlanCommand implements CommandHandler {
     await fs.mkdir(config.outputDir, { recursive: true });
 
     const queuePath = path.join(config.outputDir, '_queue.yaml');
+    const treePath = path.join(config.outputDir, '_tree.yaml');
 
     // If pageId is specified, create queue for that page and all children
     if (config.pageId) {
@@ -25,10 +26,17 @@ export class PlanCommand implements CommandHandler {
       console.log(`Output directory: ${config.outputDir}\n`);
 
       try {
-        const pages = await this.collectPageTree(api, config.pageId);
+        const tree = await this.collectPageTree(api, config.pageId);
+        const pages = this.flattenTree(tree);
+        
+        // Write tree structure
+        await this.writeTree(treePath, config, tree);
+        
+        // Write queue
         await this.writeQueue(queuePath, config, pages);
         
-        console.log(`\n✓ Queue created: ${queuePath}`);
+        console.log(`\n✓ Tree structure created: ${treePath}`);
+        console.log(`✓ Queue created: ${queuePath}`);
         console.log(`  Total pages in queue: ${pages.length}`);
       } catch (error) {
         throw new Error(`Failed to create queue for page ${config.pageId}: ${error instanceof Error ? error.message : error}`);
@@ -56,10 +64,17 @@ export class PlanCommand implements CommandHandler {
         console.log(`Limiting to first ${config.limit} pages`);
       }
       
+      // Build tree structure from flat list
+      const tree = this.buildTreeFromIndex(pages);
+      
+      // Write tree structure
+      await this.writeTree(treePath, config, tree);
+      
       // Write _queue.yaml (same format, just a copy for now)
       await this.writeQueue(queuePath, config, pagesToQueue);
       
-      console.log(`\n✓ Queue created: ${queuePath}`);
+      console.log(`\n✓ Tree structure created: ${treePath}`);
+      console.log(`✓ Queue created: ${queuePath}`);
       console.log(`  Total pages in queue: ${pagesToQueue.length}`);
     } catch (error) {
       throw new Error(`Failed to create queue from index: ${error instanceof Error ? error.message : error}`);
@@ -69,35 +84,116 @@ export class PlanCommand implements CommandHandler {
   /**
    * Recursively collect a page and all its descendants
    */
-  private async collectPageTree(api: ConfluenceApi, pageId: string, depth: number = 0): Promise<PageIndexEntry[]> {
-    const pages: PageIndexEntry[] = [];
+  private async collectPageTree(api: ConfluenceApi, pageId: string, depth: number = 0): Promise<PageTreeNode> {
     const indent = '  '.repeat(depth);
     
     // Fetch the page
     const page = await api.getPage(pageId);
-    console.log(`${indent}[${pages.length + 1}] Found: ${page.title} (${page.id})`);
+    console.log(`${indent}[${depth + 1}] Found: ${page.title} (${page.id})`);
     
-    // Add to results
-    pages.push({
+    // Create tree node
+    const node: PageTreeNode = {
       id: page.id,
       title: page.title,
       version: page.version,
       parentId: page.parentId,
       modifiedDate: page.modifiedDate,
-      indexedDate: new Date().toISOString(),
-      pageNumber: 0 // Not from API pagination
-    });
+      children: []
+    };
     
     // Fetch child pages
     const children = await api.getChildPages(pageId);
     
     // Recursively collect children
     for (const child of children) {
-      const childPages = await this.collectPageTree(api, child.id, depth + 1);
-      pages.push(...childPages);
+      const childNode = await this.collectPageTree(api, child.id, depth + 1);
+      if (node.children) {
+        node.children.push(childNode);
+      }
     }
     
-    return pages;
+    return node;
+  }
+
+  /**
+   * Flatten tree structure to array of PageIndexEntry
+   */
+  private flattenTree(node: PageTreeNode, result: PageIndexEntry[] = []): PageIndexEntry[] {
+    result.push({
+      id: node.id,
+      title: node.title,
+      version: node.version,
+      parentId: node.parentId,
+      modifiedDate: node.modifiedDate,
+      indexedDate: new Date().toISOString(),
+      pageNumber: 0
+    });
+    
+    if (node.children) {
+      for (const child of node.children) {
+        this.flattenTree(child, result);
+      }
+    }
+    
+    return result;
+  }
+
+  /**
+   * Build tree structure from flat index
+   */
+  private buildTreeFromIndex(pages: PageIndexEntry[]): PageTreeNode[] {
+    const nodeMap = new Map<string, PageTreeNode>();
+    const roots: PageTreeNode[] = [];
+    
+    // First pass: create all nodes
+    for (const page of pages) {
+      nodeMap.set(page.id, {
+        id: page.id,
+        title: page.title,
+        version: page.version,
+        parentId: page.parentId,
+        modifiedDate: page.modifiedDate,
+        children: []
+      });
+    }
+    
+    // Second pass: build tree structure
+    for (const page of pages) {
+      const node = nodeMap.get(page.id);
+      if (!node) continue;
+      
+      if (page.parentId && nodeMap.has(page.parentId)) {
+        // Add as child to parent
+        const parent = nodeMap.get(page.parentId);
+        if (parent?.children) {
+          parent.children.push(node);
+        }
+      } else {
+        // No parent or parent not in index - it's a root
+        roots.push(node);
+      }
+    }
+    
+    return roots;
+  }
+
+  /**
+   * Write _tree.yaml file with hierarchical structure
+   */
+  private async writeTree(treePath: string, config: CommandContext['config'], tree: PageTreeNode | PageTreeNode[]): Promise<void> {
+    const header = `# Confluence Page Tree
+# Space: ${config.spaceKey}
+# Created: ${new Date().toISOString()}
+
+`;
+    
+    const treeData = Array.isArray(tree) ? tree : [tree];
+    const yamlContent = yaml.stringify(treeData, {
+      indent: 2,
+      lineWidth: 0 // No line wrapping
+    });
+    
+    await fs.writeFile(treePath, header + yamlContent, 'utf-8');
   }
 
   /**

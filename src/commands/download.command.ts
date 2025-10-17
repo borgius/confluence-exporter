@@ -123,8 +123,8 @@ export class DownloadCommand implements CommandHandler {
     page: Page,
     config: CommandContext['config']
   ): Promise<void> {
-    // Create safe filename from title
-    const filename = slugify(page.title);
+    // Create safe filename from title with page ID prefix
+    const filename = `${page.id}-${slugify(page.title)}`;
     const htmlFilepath = path.join(config.outputDir, `${filename}.html`);
 
     // Format and write original HTML file

@@ -122,6 +122,15 @@ export interface PageIndex {
   pages: PageIndexEntry[];
 }
 
+export interface PageTreeNode {
+  id: string;
+  title: string;
+  version?: number;
+  parentId?: string;
+  modifiedDate?: string;
+  children?: PageTreeNode[];
+}
+
 // ============================================================================
 // Transformation Types
 // ============================================================================

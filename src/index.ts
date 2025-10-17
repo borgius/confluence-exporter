@@ -66,7 +66,7 @@ async function main() {
     spaceKey: args.space || process.env.CONFLUENCE_SPACE_KEY || '',
     outputDir: args.output || process.env.OUTPUT_DIR || './output',
     pageId: args.pageId || undefined,
-    pageSize: args.pageSize ? parseInt(args.pageSize, 10) : undefined,
+    pageSize: args.pageSize ? parseInt(args.pageSize, 10) : 100,
     limit: args.limit ? parseInt(args.limit, 10) : undefined
   };
 
