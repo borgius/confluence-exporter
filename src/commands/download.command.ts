@@ -14,7 +14,7 @@ export class DownloadCommand implements CommandHandler {
   name = 'download';
   description = 'Download HTML pages from Confluence';
 
-  constructor(private config: ConfluenceConfig) {}
+  constructor(private config: ConfluenceConfig) { }
 
   async execute(context: CommandContext): Promise<void> {
     const api = new ConfluenceApi(this.config);
@@ -37,86 +37,75 @@ export class DownloadCommand implements CommandHandler {
     const hasTree = existsSync(treeFile);
     const hasQueue = existsSync(queueFile);
 
-    if (!hasTree) {
-      console.log(`❌ Tree file not found`);
-      process.exit(1);
-    }
-
-    if (!hasQueue) {
-      console.log(`❌ Queue file not found`);
-      process.exit(1);
-    }
-    
-    if (hasQueue) {
-      // Fallback to flat queue structure
-      console.log(`\n📋 Using flat queue from queue file\n`);
-      
-      const queueContent = readFileSync(queueFile, 'utf-8');
-      const queue = parse(queueContent) as PageIndexEntry[];
-      
-      console.log(`📊 Queue contains ${queue.length} pages\n`);
-      
-      // Apply limit if specified
-      const pagesToProcess = this.config.limit ? queue.slice(0, this.config.limit) : queue;
-      
-      for (let i = 0; i < pagesToProcess.length; i++) {
-        const entry = pagesToProcess[i];
-        console.log(`[${i + 1}/${pagesToProcess.length}] Downloading: ${entry.title} (${entry.id})`);
-        
-        try {
-          await this.downloadPage(api, entry.id);
-        } catch (error) {
-          console.error(`❌ Failed to download page ${entry.id}:`, error);
-        }
-      }
-      
-      console.log('\n✅ Download complete!\n');
-    } else {
+    if (!hasTree || !hasQueue) {
       throw new Error(
-        `❌ No queue or tree file found. Run 'plan' command first to create the queue.`
+        `❌ Tree or queue file not found. Run 'plan' command first to create the tree and queue.`
       );
     }
+
+    // Read queue
+    const queueContent = readFileSync(queueFile, 'utf-8');
+    const queue = parse(queueContent) as PageIndexEntry[];
+
+    console.log(`📊 Queue contains ${queue.length} pages\n`);
+
+    // Apply limit if specified
+    const pagesToProcess = this.config.limit ? queue.slice(0, this.config.limit) : queue;
+
+    await this.downloadFromQueueWithHierarchy(api, this.config, pagesToProcess);
   }
 
-  private async downloadFromTree(
+  private async downloadFromQueueWithHierarchy(
     api: ConfluenceApi,
-    config: CommandContext['config']
+    config: ConfluenceConfig,
+    queue: PageIndexEntry[]
   ): Promise<void> {
     const treeFile = join(config.outputDir, '_tree.yaml');
     const treeContent = readFileSync(treeFile, 'utf-8');
     const tree = parse(treeContent) as PageTreeNode[];
 
+    // Build a map of pageId -> path
+    const pagePathMap = new Map<string, string>();
+
+    const buildPathMap = (node: PageTreeNode, currentPath: string) => {
+      // Store the path for this page
+      pagePathMap.set(node.id, currentPath);
+
+      // If node has children, build paths for them too
+      if (node.children && node.children.length > 0) {
+        const slug = this.slugify(node.title);
+        const childDir = join(currentPath, `${node.id}-${slug}`);
+
+        for (const child of node.children) {
+          buildPathMap(child, childDir);
+        }
+      }
+    };
+
     // Create root folder for space
     const rootDir = join(config.outputDir, config.spaceKey);
     mkdirSync(rootDir, { recursive: true });
 
-    // Process tree recursively
-    let count = 0;
-    const processNode = async (node: PageTreeNode, currentDir: string, depth: number = 0) => {
-      count++;
-      const indent = '  '.repeat(depth);
-      console.log(`${indent}[${count}] Downloading: ${node.title} (${node.id})`);
+    // Build the path map from tree
+    for (const node of tree) {
+      buildPathMap(node, rootDir);
+    }
+
+    // Download pages from queue using the path map
+    for (let i = 0; i < queue.length; i++) {
+      const entry = queue[i];
+      const pagePath = pagePathMap.get(entry.id) || rootDir;
+
+      console.log(`[${i + 1}/${queue.length}] Downloading: ${entry.title} (${entry.id})`);
+      console.log(`  → ${pagePath}`);
 
       try {
-        await this.downloadPage(api, node.id, currentDir);
-
-        // If node has children, create a folder and recurse
-        if (node.children && node.children.length > 0) {
-          const slug = this.slugify(node.title);
-          const childDir = join(currentDir, `${node.id}-${slug}`);
-          mkdirSync(childDir, { recursive: true });
-
-          for (const child of node.children) {
-            await processNode(child, childDir, depth + 1);
-          }
-        }
+        // Create directory if it doesn't exist
+        mkdirSync(pagePath, { recursive: true });
+        await this.downloadPage(api, entry.id, pagePath);
       } catch (error) {
-        console.error(`${indent}❌ Failed to download: ${error}`);
+        console.error(`❌ Failed to download page ${entry.id}:`, error);
       }
-    };
-
-    for (const node of tree) {
-      await processNode(node, rootDir);
     }
 
     console.log('\n✅ Download complete!\n');
@@ -130,7 +119,7 @@ export class DownloadCommand implements CommandHandler {
     const page = await api.getPage(pageId);
     const slug = this.slugify(page.title);
     const filename = `${pageId}-${slug}.html`;
-    
+
     const dir = outputDir || process.cwd();
     const filepath = join(dir, filename);
 
