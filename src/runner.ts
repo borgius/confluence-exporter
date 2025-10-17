@@ -79,21 +79,22 @@ export class ExportRunner {
         id: page.id,
         title: page.title,
         version: page.version,
-        parentId: page.parentId
+        parentId: page.parentId,
+        modifiedDate: page.modifiedDate,
+        pageNumber: pageCount
       });
+      
+      // Save index after each page is fetched
+      const index: PageIndex = {
+        spaceKey: this.config.spaceKey,
+        exportDate: new Date().toISOString(),
+        totalPages: pages.length,
+        pages
+      };
+      
+      const yamlContent = yaml.stringify(index);
+      await fs.writeFile(indexPath, yamlContent, 'utf-8');
     }
-    
-    // Create index object
-    const index: PageIndex = {
-      spaceKey: this.config.spaceKey,
-      exportDate: new Date().toISOString(),
-      totalPages: pages.length,
-      pages
-    };
-    
-    // Write index to YAML file
-    const yamlContent = yaml.stringify(index);
-    await fs.writeFile(indexPath, yamlContent, 'utf-8');
     
     console.log(`\n✓ Index created: ${indexPath}`);
     console.log(`  Total pages indexed: ${pages.length}`);

@@ -19,7 +19,7 @@ export class ConfluenceApi {
    * Fetch a page with its content
    */
   async getPage(pageId: string): Promise<Page> {
-    const url = `${this.baseUrl}/rest/api/content/${pageId}?expand=body.storage,version`;
+    const url = `${this.baseUrl}/rest/api/content/${pageId}?expand=body.storage,version,history.lastUpdated`;
     
     const response = await fetch(url, {
       headers: {
@@ -36,8 +36,9 @@ export class ConfluenceApi {
       id: string;
       title: string;
       body?: { storage?: { value: string } };
-      version?: { number: number };
+      version?: { number: number; when?: string };
       ancestors?: Array<{ id: string }>;
+      history?: { lastUpdated?: { when?: string } };
     }
 
     const data = await response.json() as PageResponse;
@@ -47,7 +48,8 @@ export class ConfluenceApi {
       title: data.title,
       body: data.body?.storage?.value || '',
       version: data.version?.number,
-      parentId: data.ancestors?.[data.ancestors.length - 1]?.id
+      parentId: data.ancestors?.[data.ancestors.length - 1]?.id,
+      modifiedDate: data.version?.when || data.history?.lastUpdated?.when
     };
   }
 
@@ -55,7 +57,7 @@ export class ConfluenceApi {
    * List all pages in a space
    */
   async listPages(spaceKey: string, start: number = 0, limit: number = 25): Promise<PaginatedResponse<Page>> {
-    const url = `${this.baseUrl}/rest/api/content?spaceKey=${spaceKey}&type=page&expand=body.storage,version&start=${start}&limit=${limit}`;
+    const url = `${this.baseUrl}/rest/api/content?spaceKey=${spaceKey}&type=page&expand=body.storage,version,history.lastUpdated&start=${start}&limit=${limit}`;
     
     const response = await fetch(url, {
       headers: {
@@ -72,8 +74,9 @@ export class ConfluenceApi {
       id: string;
       title: string;
       body?: { storage?: { value: string } };
-      version?: { number: number };
+      version?: { number: number; when?: string };
       ancestors?: Array<{ id: string }>;
+      history?: { lastUpdated?: { when?: string } };
     }
 
     interface ListPagesResponse {
@@ -94,7 +97,8 @@ export class ConfluenceApi {
         title: item.title,
         body: item.body?.storage?.value || '',
         version: item.version?.number,
-        parentId: item.ancestors?.[item.ancestors.length - 1]?.id
+        parentId: item.ancestors?.[item.ancestors.length - 1]?.id,
+        modifiedDate: item.version?.when || item.history?.lastUpdated?.when
       })),
       start: data.start,
       limit: data.limit,

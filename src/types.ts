@@ -17,6 +17,7 @@ export interface Page {
   body: string;
   version?: number;
   parentId?: string;
+  modifiedDate?: string;
 }
 
 export interface PaginatedResponse<T> {
@@ -41,6 +42,8 @@ export interface PageIndexEntry {
   title: string;
   version?: number;
   parentId?: string;
+  modifiedDate?: string;
+  pageNumber: number;
 }
 
 export interface PageIndex {
