@@ -6,7 +6,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import prettier from 'prettier';
 import yaml from 'yaml';
-import type { ConfluenceConfig, Page, PageIndex, PageIndexEntry } from './types.js';
+import type { ConfluenceConfig, Page, PageIndexEntry } from './types.js';
 import { ConfluenceApi } from './api.js';
 import { MarkdownTransformer } from './transformer.js';
 
@@ -66,38 +66,48 @@ export class ExportRunner {
    */
   private async createIndex(): Promise<void> {
     const indexPath = path.join(this.config.outputDir, 'index.yaml');
-    const pages: PageIndexEntry[] = [];
+    
+    // Initialize the file with header metadata as comments
+    const header = `# Confluence Export Index
+# Space: ${this.config.spaceKey}
+# Export Date: ${new Date().toISOString()}
+
+`;
+    await fs.writeFile(indexPath, header, 'utf-8');
     
     let pageCount = 0;
     
-    // Fetch all pages metadata (without body content)
+    // Fetch all pages metadata (without body content) and append each to the file
     for await (const page of this.api.getAllPages(this.config.spaceKey)) {
       pageCount++;
       console.log(`[${pageCount}] Indexed: ${page.title} (${page.id})`);
       
-      pages.push({
+      // Create page entry
+      const pageEntry: PageIndexEntry = {
         id: page.id,
         title: page.title,
         version: page.version,
         parentId: page.parentId,
         modifiedDate: page.modifiedDate,
+        indexedDate: new Date().toISOString(),
         pageNumber: pageCount
-      });
-      
-      // Save index after each page is fetched
-      const index: PageIndex = {
-        spaceKey: this.config.spaceKey,
-        exportDate: new Date().toISOString(),
-        totalPages: pages.length,
-        pages
       };
       
-      const yamlContent = yaml.stringify(index);
-      await fs.writeFile(indexPath, yamlContent, 'utf-8');
+      // Convert to YAML and format as array item (with leading -)
+      const yamlDoc = yaml.stringify(pageEntry).trim();
+      const lines = yamlDoc.split('\n');
+      const arrayItem = lines.map((line, index) => {
+        if (index === 0) {
+          return `- ${line}`;
+        }
+        return `  ${line}`;
+      }).join('\n');
+      
+      await fs.appendFile(indexPath, arrayItem + '\n', 'utf-8');
     }
     
     console.log(`\n✓ Index created: ${indexPath}`);
-    console.log(`  Total pages indexed: ${pages.length}`);
+    console.log(`  Total pages indexed: ${pageCount}`);
   }
 
   /**
@@ -106,23 +116,23 @@ export class ExportRunner {
   private async downloadFromIndex(): Promise<void> {
     const indexPath = path.join(this.config.outputDir, 'index.yaml');
     
-    // Read and parse index.yaml
+    // Read and parse index.yaml (array format)
     const yamlContent = await fs.readFile(indexPath, 'utf-8');
-    const index = yaml.parse(yamlContent) as PageIndex;
+    const pages = yaml.parse(yamlContent) as PageIndexEntry[];
     
     console.log(`Reading index from: ${indexPath}`);
-    console.log(`Space: ${index.spaceKey}`);
-    console.log(`Total pages to download: ${index.totalPages}\n`);
+    console.log(`Space: ${this.config.spaceKey}`);
+    console.log(`Total pages to download: ${pages.length}\n`);
     
     let successCount = 0;
     let errorCount = 0;
     
     // Process each page from the index
-    for (let i = 0; i < index.pages.length; i++) {
-      const entry = index.pages[i];
+    for (let i = 0; i < pages.length; i++) {
+      const entry = pages[i];
       const pageNum = i + 1;
       
-      console.log(`[${pageNum}/${index.totalPages}] Processing: ${entry.title} (${entry.id})`);
+      console.log(`[${pageNum}/${pages.length}] Processing: ${entry.title} (${entry.id})`);
       
       try {
         // Fetch full page with body content

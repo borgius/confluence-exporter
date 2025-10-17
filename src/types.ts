@@ -43,6 +43,7 @@ export interface PageIndexEntry {
   version?: number;
   parentId?: string;
   modifiedDate?: string;
+  indexedDate: string;
   pageNumber: number;
 }
 
