@@ -102,14 +102,16 @@ export class DownloadCommand implements CommandHandler {
       const entry = queue[i];
       const pagePath = pagePathMap.get(entry.id) || rootDir;
 
-      // console.log(`[${i + 1}/${queue.length}] Downloading: ${entry.title} (${entry.id})`);
-      const deep = pagePath.split(path.sep).length - rootDir.split(path.sep).length - 1;
-      console.log(`${'  '.repeat(deep)}/${pagePath.split(path.sep).pop()} [${i + 1}/${queue.length}]`);
+      // Skip if HTML file already exists
+      const skip = existsSync(pagePath);
+
+      const deep = Math.max(0, pagePath.split(path.sep).length - rootDir.split(path.sep).length - 1);
+      console.log(`${'  '.repeat(deep)}/${pagePath.split(path.sep).pop()} [${i + 1}/${queue.length}] ${skip ? '(⏭️ skipped)' : ''}`);
 
       try {
         // Create directory if it doesn't exist
         mkdirSync(pagePath, { recursive: true });
-        await this.downloadPage(api, entry.id, pagePath);
+        if (!skip) await this.downloadPage(api, entry.id, pagePath);
       } catch (error) {
         console.error(`❌ Failed to download page ${entry.id}:`, error);
       }
