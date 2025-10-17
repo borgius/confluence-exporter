@@ -17,8 +17,9 @@ This document provides comprehensive guidance for AI agents (like GitHub Copilot
 
 ### Key Features
 - ✅ Minimal dependencies (uses native Node.js fetch)
-- ✅ Command-based CLI with four commands: `help`, `index`, `plan`, `download`
-- ✅ Three-phase export workflow (indexing → planning → downloading)
+- ✅ Command-based CLI with five commands: `help`, `index`, `plan`, `download`, `transform`
+- ✅ Four-phase export workflow (indexing → planning → downloading → transforming)
+- ✅ Separate HTML download and Markdown transformation for flexibility
 - ✅ HTML to Markdown transformation with Confluence macro support
 - ✅ User link resolution with intelligent caching
 - ✅ Image/attachment downloading with automatic slugification
@@ -28,14 +29,17 @@ This document provides comprehensive guidance for AI agents (like GitHub Copilot
 ### Quick Start
 
 ```bash
-# Full space export (3-phase workflow)
-npm run dev -- index plan download -u URL -n USER -p TOKEN -s SPACE -o ./output
+# Full space export (4-phase workflow)
+npm run dev -- index plan download transform -u URL -n USER -p TOKEN -s SPACE -o ./output
 
-# Single page export (direct download)
+# Single page HTML download only
 npm run dev -- download -i PAGE_ID -u URL -n USER -p TOKEN -s SPACE -o ./output
 
+# Transform existing HTML files to Markdown
+npm run dev -- transform -u URL -n USER -p TOKEN -s SPACE -o ./output
+
 # Resume from existing index
-npm run dev -- plan download -u URL -n USER -p TOKEN -s SPACE -o ./output
+npm run dev -- plan download transform -u URL -n USER -p TOKEN -s SPACE -o ./output
 ```
 
 ---
@@ -53,10 +57,11 @@ src/
 ├── cleaner.ts        # Post-processing cleanup
 └── commands/         # Command handlers (modular architecture)
     ├── types.ts      # Command-related type definitions
-    ├── help.command.ts    # Help command handler
-    ├── index.command.ts   # Index command handler
-    ├── plan.command.ts    # Plan command handler
-    ├── download.command.ts # Download command handler
+    ├── help.command.ts      # Help command handler
+    ├── index.command.ts     # Index command handler
+    ├── plan.command.ts      # Plan command handler
+    ├── download.command.ts  # Download command handler (HTML only)
+    ├── transform.command.ts # Transform command handler (HTML → MD)
     ├── registry.ts   # Command registry (maps commands to handlers)
     ├── executor.ts   # Command executor (orchestrates execution)
     └── index.ts      # Exports for easy importing
@@ -72,6 +77,7 @@ flowchart TD
     C --> D[Phase 1: IndexCommand]
     C --> E[Phase 2: PlanCommand]
     C --> F[Phase 3: DownloadCommand]
+    C --> G[Phase 4: TransformCommand]
     
     D --> D1[API.getAllPages]
     D1 --> D2[_index.yaml]
@@ -85,21 +91,28 @@ flowchart TD
     F --> F1[Read _queue.yaml]
     F1 --> F2[For each page]
     F2 --> F3[API.getPage]
-    F3 --> F4[Transformer.transform]
-    F4 --> F5[Download images]
-    F5 --> F6[Apply cleaner]
-    F6 --> F7[Prettier format]
-    F7 --> F8[Save .md + .html]
+    F3 --> F4[Save .html]
+    
+    G --> G1[Read HTML files]
+    G1 --> G2{MD exists?}
+    G2 -->|No| G3[Transformer.transform]
+    G2 -->|Yes| G4[Skip]
+    G3 --> G5[Download images]
+    G5 --> G6[Apply cleaner]
+    G6 --> G7[Prettier format]
+    G7 --> G8[Save .md]
     
     style D fill:#e1f5ff
     style E fill:#fff4e1
     style F fill:#e8f5e9
+    style G fill:#f3e5f5
 ```
 
 **Workflow Summary:**
 1. **Index Phase** - Scan space and create `_index.yaml` with all page metadata
 2. **Plan Phase** - Create `_queue.yaml` from index or specific page tree
-3. **Download Phase** - Process queue and generate markdown files
+3. **Download Phase** - Process queue and download HTML files
+4. **Transform Phase** - Convert HTML to Markdown (skips existing MD files)
 
 ### Key Design Patterns
 
@@ -108,13 +121,14 @@ Each command is a separate class implementing `CommandHandler` interface:
 - **Benefits:** Separation of concerns, testable, extensible
 - **Registry:** `CommandRegistry` maps command names to handlers
 - **Executor:** `CommandExecutor` orchestrates command execution
-- **Commands:** `help`, `index`, `plan`, `download`
+- **Commands:** `help`, `index`, `plan`, `download`, `transform`
 
-#### 2. Three-Phase Export Workflow
+#### 2. Four-Phase Export Workflow
 Separates concerns for resumability and transparency:
 - **Phase 1 (Index):** Scan space → `_index.yaml` with metadata
 - **Phase 2 (Plan):** Create `_queue.yaml` from index or page tree
-- **Phase 3 (Download):** Process queue → generate markdown files
+- **Phase 3 (Download):** Process queue → download HTML files only
+- **Phase 4 (Transform):** Convert HTML to Markdown (checks for existing MD files)
 
 #### 3. Async Generators
 Memory-efficient pagination in `api.getAllPages()`:
@@ -347,7 +361,8 @@ The application uses a modular command architecture where each command is self-c
 | `help` | Display usage information | Console output | N/A |
 | `index` | Create page inventory | `_index.yaml` | ✅ Yes |
 | `plan` | Create download queue | `_queue.yaml` | ❌ No |
-| `download` | Generate markdown files | `.md` + `.html` files | ❌ No |
+| `download` | Download HTML pages | `.html` files | ❌ No |
+| `transform` | Transform HTML to Markdown | `.md` files + images | ✅ Yes (skips existing) |
 
 ### Command Handlers
 
@@ -398,31 +413,50 @@ npm run dev -- download -u URL -n USER -p TOKEN -s SPACE -o ./output
 # Download single page directly
 npm run dev -- download -i PAGE_ID -u URL -n USER -p TOKEN -s SPACE -o ./output
 ```
-**Purpose:** Generate markdown files (Phase 3)
+**Purpose:** Download HTML pages (Phase 3)
 
 **Behavior:**
 - **Mode A (No pageId):** Requires `_queue.yaml` to exist (throws error if missing)
 - **Mode B (With pageId):** Downloads single page directly (no queue needed)
 - For each page:
   1. Fetch via `api.getPage(id)`
-  2. Transform HTML to Markdown
-  3. Download images to `images/` subdirectory
-  4. Format with Prettier
-  5. Save `.md` and `.html` files
-- **Logging:** `[N/Total] Processing: Title (ID)`
+  2. Format HTML with Prettier
+  3. Save `.html` file
+- **Logging:** `[N/Total] Downloading: Title (ID)`
 
-**Output:** Markdown files, HTML files, and downloaded images
+**Output:** HTML files only
+
+#### TransformCommand (`transform.command.ts`)
+```bash
+# Transform all HTML files in output directory
+npm run dev -- transform -u URL -n USER -p TOKEN -s SPACE -o ./output
+```
+**Purpose:** Transform HTML to Markdown (Phase 4)
+
+**Behavior:**
+- Scans output directory for `.html` files
+- For each HTML file:
+  1. Check if corresponding `.md` file exists
+  2. If `.md` exists, skip (no overwrite)
+  3. If `.md` missing, transform HTML to Markdown
+  4. Download images to `images/` subdirectory
+  5. Apply cleaner and format with Prettier
+  6. Save `.md` file
+- **Logging:** `[N/Total] Checking: file.html`
+- **Smart Skip:** Only transforms pages missing Markdown files
+
+**Output:** Markdown files and downloaded images (skips existing MD files)
 
 ### Export Modes
 
 #### Mode 1: Single Page Export
 When `config.pageId` is set (via `download` command):
 1. Fetch single page via `api.getPage(pageId)`
-2. Transform to markdown
-3. Save .md and .html files
+2. Save .html file
+3. Run `transform` command separately to generate .md
 
 #### Mode 2: Full Space Export
-When `config.pageId` is undefined (via `index`, `plan`, and `download` commands):
+When `config.pageId` is undefined (via `index`, `plan`, `download`, and `transform` commands):
 
 **Phase 1: Create Index** (`IndexCommand`)
 1. Check if `_index.yaml` exists (resume if found)
@@ -443,23 +477,32 @@ When `config.pageId` is undefined (via `index`, `plan`, and `download` commands)
 1. Check for `_queue.yaml` (required, throws error if missing)
 2. For each entry:
    - Fetch full page via `api.getPage(id)`
-   - Transform to markdown
-   - Download images
    - Format with Prettier
-   - Save .md and .html files
-3. Log: `[N/Total] Processing: Title (ID)`
+   - Save .html file
+3. Log: `[N/Total] Downloading: Title (ID)`
+
+**Phase 4: Transform Pages** (`TransformCommand`)
+1. Scan output directory for .html files
+2. For each HTML file:
+   - Check if .md exists (skip if found)
+   - Transform HTML to markdown
+   - Download images
+   - Apply cleaner
+   - Format with Prettier
+   - Save .md file
+3. Log: `[N/Total] Checking: file.html`
 
 ### Common Workflows
 
 ```bash
 # Workflow 1: Full space export (all phases)
-npm run dev -- index plan download -u URL -n USER -p TOKEN -s SPACE -o ./output
+npm run dev -- index plan download transform -u URL -n USER -p TOKEN -s SPACE -o ./output
 
 # Workflow 2: Resume from existing index
-npm run dev -- plan download -u URL -n USER -p TOKEN -s SPACE -o ./output
+npm run dev -- plan download transform -u URL -n USER -p TOKEN -s SPACE -o ./output
 
 # Workflow 3: Export specific page and children
-npm run dev -- plan download -i PAGE_ID -u URL -n USER -p TOKEN -s SPACE -o ./output
+npm run dev -- plan download transform -i PAGE_ID -u URL -n USER -p TOKEN -s SPACE -o ./output
 
 # Workflow 4: Single page only (fastest)
 npm run dev -- download -i PAGE_ID -u URL -n USER -p TOKEN -s SPACE -o ./output
@@ -526,18 +569,19 @@ Formatting failures are non-fatal (saves unformatted with warning).
 ## CLI (index.ts)
 
 ### Command Structure
-The CLI uses a command-based architecture with four commands:
+The CLI uses a command-based architecture with five commands:
 
 | Command | Purpose | Required Files | Output |
 |---------|---------|----------------|--------|
 | `help` | Display help | None | Console |
 | `index` | Scan space pages | None | `_index.yaml` |
 | `plan` | Create download queue | `_index.yaml` (if no pageId) | `_queue.yaml` |
-| `download` | Generate markdown | `_queue.yaml` (if no pageId) | `.md` + `.html` files |
+| `download` | Download HTML pages | `_queue.yaml` (if no pageId) | `.html` files |
+| `transform` | Transform HTML to MD | `.html` files | `.md` files + images |
 
 **Chaining:** Commands can be chained to run in sequence:
 ```bash
-npm run dev -- index plan download -u URL -n USER -p TOKEN -s SPACE
+npm run dev -- index plan download transform -u URL -n USER -p TOKEN -s SPACE
 ```
 
 ### Argument Parsing
@@ -596,6 +640,7 @@ node index.js download -u URL -n USER -p PASS -s SPACE -o DIR -i ID
 5. **`plan` with pageId**: Creates _queue.yaml with specified page and all children
 6. **`plan` without pageId**: Creates _queue.yaml from existing _index.yaml
 7. **`download`**: Requires _queue.yaml to exist (errors if missing with instruction to run plan)
+8. **`transform`**: Scans for .html files and creates .md files (skips if .md exists)
 
 ### Options
 
@@ -619,7 +664,7 @@ Fallback if CLI args not provided:
 - `OUTPUT_DIR`
 
 ### Validation
-Required fields (for `index` and `download` commands):
+Required fields (for `index`, `download`, and `transform` commands):
 - `baseUrl`
 - `username`
 - `password`
@@ -1026,7 +1071,7 @@ MIT - Same as parent project
 
 **Last Updated:** October 17, 2025  
 **Agent Compatibility:** Optimized for GitHub Copilot, Claude, GPT-4  
-**Document Version:** 2.0.0
+**Document Version:** 2.1.0
 
 ### When to Update This Document
 

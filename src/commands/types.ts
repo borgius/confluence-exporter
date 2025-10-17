@@ -4,7 +4,7 @@
 
 import type { ConfluenceConfig } from '../types.js';
 
-export type Command = 'help' | 'index' | 'download' | 'plan';
+export type Command = 'help' | 'index' | 'plan' | 'download' | 'transform';
 
 export interface CommandContext {
   config: ConfluenceConfig;

@@ -6,6 +6,7 @@ import { HelpCommand } from './help.command.js';
 import { IndexCommand } from './index.command.js';
 import { PlanCommand } from './plan.command.js';
 import { DownloadCommand } from './download.command.js';
+import { TransformCommand } from './transform.command.js';
 import type { Command, CommandHandler } from './types.js';
 
 export class CommandRegistry {
@@ -16,7 +17,8 @@ export class CommandRegistry {
       ['help', new HelpCommand()],
       ['index', new IndexCommand()],
       ['plan', new PlanCommand()],
-      ['download', new DownloadCommand()]
+      ['download', new DownloadCommand()],
+      ['transform', new TransformCommand()]
     ]);
   }
 
