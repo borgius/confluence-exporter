@@ -37,23 +37,17 @@ export class DownloadCommand implements CommandHandler {
     const hasTree = existsSync(treeFile);
     const hasQueue = existsSync(queueFile);
 
-    if (hasTree) {
-      console.log(`✅ Found tree file`);
-    } else {
+    if (!hasTree) {
       console.log(`❌ Tree file not found`);
+      process.exit(1);
     }
 
-    if (hasQueue) {
-      console.log(`✅ Found queue file`);
-    } else {
+    if (!hasQueue) {
       console.log(`❌ Queue file not found`);
+      process.exit(1);
     }
-
-    if (hasTree) {
-      // Use tree structure (hierarchical download)
-      console.log(`\n📂 Using hierarchical structure from tree\n`);
-      await this.downloadFromTree(api, this.config);
-    } else if (hasQueue) {
+    
+    if (hasQueue) {
       // Fallback to flat queue structure
       console.log(`\n📋 Using flat queue from queue file\n`);
       
