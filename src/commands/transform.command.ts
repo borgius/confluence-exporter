@@ -5,8 +5,9 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import prettier from 'prettier';
+import { htmlToMarkdown } from "webforai";
 import { ConfluenceApi } from '../api.js';
-import { slugify, unslugify } from '../utils.js';
+import { pagePath, slugify, unslugify } from '../utils.js';
 import type { CommandContext, CommandHandler } from './types.js';
 import type { ConfluenceConfig } from '../types.js';
 
@@ -18,7 +19,7 @@ interface TreeNode {
 
 export class TransformCommand implements CommandHandler {
   private api!: ConfluenceApi;
-  constructor(private config: ConfluenceConfig) {}
+  constructor(private config: ConfluenceConfig) { }
   async execute(_context: CommandContext): Promise<void> {
     this.api = new ConfluenceApi(this.config);
 
@@ -35,28 +36,36 @@ export class TransformCommand implements CommandHandler {
     let transformedCount = 0;
     let skippedCount = 0;
     let errorCount = 0;
+    const htmlFiles: string[] = [];
 
-    // Helper function to recursively find HTML files
-    const findHtmlFiles = async (dir: string, fileList: string[] = []): Promise<string[]> => {
-      const entries = await fs.readdir(dir, { withFileTypes: true });
-      
-      for (const entry of entries) {
-        const fullPath = path.join(dir, entry.name);
-        
-        if (entry.isDirectory() && !entry.name.startsWith('_') && entry.name !== 'images') {
-          // Recursively search subdirectories (skip _index, _queue, etc. and images folder)
-          await findHtmlFiles(fullPath, fileList);
-        } else if (entry.isFile() && entry.name.endsWith('.html') && !entry.name.startsWith('_')) {
-          fileList.push(fullPath);
+    if (this.config.pageId) {
+      console.log(`Processing specific page: ${this.config.pageId}\n`);
+      const pageHtmlPath = pagePath(this.config.pageId, this.config);
+      console.log(`HTML path: ${pageHtmlPath}\n`);
+      htmlFiles.push(pageHtmlPath);
+    } else {
+
+      // Helper function to recursively find HTML files
+      const findHtmlFiles = async (dir: string, fileList: string[] = []): Promise<string[]> => {
+        const entries = await fs.readdir(dir, { withFileTypes: true });
+
+        for (const entry of entries) {
+          const fullPath = path.join(dir, entry.name);
+
+          if (entry.isDirectory() && !entry.name.startsWith('_') && entry.name !== 'images') {
+            // Recursively search subdirectories (skip _index, _queue, etc. and images folder)
+            await findHtmlFiles(fullPath, fileList);
+          } else if (entry.isFile() && entry.name.endsWith('.html') && !entry.name.startsWith('_')) {
+            fileList.push(fullPath);
+          }
         }
-      }
-      
-      return fileList;
-    };
 
-    // Find all HTML files recursively
-    const htmlFiles = await findHtmlFiles(this.config.outputDir);
+        return fileList;
+      };
 
+      // Find all HTML files recursively
+      htmlFiles.concat(await findHtmlFiles(this.config.outputDir));
+    }
     if (htmlFiles.length === 0) {
       console.log('No HTML files found to transform.');
       console.log('Run the "download" command first to download HTML pages.');
@@ -65,7 +74,7 @@ export class TransformCommand implements CommandHandler {
 
     // Apply limit if specified
     const filesToProcess = this.config.limit ? htmlFiles.slice(0, this.config.limit) : htmlFiles;
-    
+
     console.log(`Found ${htmlFiles.length} HTML files`);
     if (this.config.limit && htmlFiles.length > this.config.limit) {
       console.log(`Limiting to first ${this.config.limit} files\n`);
@@ -81,6 +90,7 @@ export class TransformCommand implements CommandHandler {
       const baseFilename = htmlFile.replace('.html', '');
       const mdFilename = `${baseFilename}.md`;
       const mdFilepath = path.join(dirPath, mdFilename);
+      const id = baseFilename.split('-')[0];
 
       // Show relative path for better readability
       const relativePath = path.relative(this.config.outputDir, htmlFilepath);
@@ -109,14 +119,14 @@ export class TransformCommand implements CommandHandler {
 
         // Build original page URL (use baseUrl if available)
         const originalUrl = this.config.baseUrl
-          ? `${this.config.baseUrl}/pages/viewpage.action?pageId=${baseFilename}`
+          ? `${this.config.baseUrl}/pages/viewpage.action?pageId=${id}`
           : '';
 
         // Create front matter
         const frontMatter = [
           '---',
           `title: "${title.replace(/"/g, '\\"')}"`,
-          `id: "${baseFilename}"`,
+          `id: "${id}"`,
           originalUrl ? `url: "${originalUrl}"` : '',
           '---'
         ].filter(Boolean).join('\n');
@@ -128,7 +138,7 @@ export class TransformCommand implements CommandHandler {
         if (images.length > 0) {
           const imagesDir = path.join(dirPath, 'images');
           await fs.mkdir(imagesDir, { recursive: true });
-          
+
           for (const image of images) {
             const imagePath = path.join(imagesDir, image.filename);
             await fs.writeFile(imagePath, image.data);
@@ -189,9 +199,12 @@ export class TransformCommand implements CommandHandler {
     // Transform macros to markdown equivalents (with data fetching)
     markdown = await this.transformMacros(markdown, pageId);
 
+    markdown = htmlToMarkdown(markdown);
+
+
     // Remove remaining ac:link elements
     markdown = markdown.replace(/<ac:link[^>]*>[\s\S]*?<\/ac:link>/g, '');
-    
+
     // Headers
     markdown = markdown.replace(/<h1[^>]*>(.*?)<\/h1>/gi, '\n# $1\n');
     markdown = markdown.replace(/<h2[^>]*>(.*?)<\/h2>/gi, '\n## $1\n');
@@ -258,13 +271,13 @@ export class TransformCommand implements CommandHandler {
 
     for (const match of imageMatches) {
       const originalFilename = match[1];
-      
+
       // Extract extension and slugify the base name
       const lastDotIndex = originalFilename.lastIndexOf('.');
       const extension = lastDotIndex > 0 ? originalFilename.slice(lastDotIndex) : '';
       const baseName = lastDotIndex > 0 ? originalFilename.slice(0, lastDotIndex) : originalFilename;
       const slugifiedFilename = slugify(baseName) + extension;
-      
+
       let replacement = `![${originalFilename}](images/${slugifiedFilename})`;
 
       // Download the image if API is available
@@ -272,13 +285,13 @@ export class TransformCommand implements CommandHandler {
         try {
           // Try downloading with original filename first (Confluence API may handle encoding internally)
           let imageData = await this.api.downloadAttachment(pageId, originalFilename);
-          
+
           // If that fails, try with URL-encoded filename
           if (!imageData) {
             const encodedImageName = encodeURIComponent(originalFilename);
             imageData = await this.api.downloadAttachment(pageId, encodedImageName);
           }
-          
+
           if (imageData) {
             images.push({ filename: slugifiedFilename, data: imageData });
             console.log(`  ✓ Downloaded image: ${originalFilename} -> ${slugifiedFilename}`);
@@ -314,10 +327,10 @@ export class TransformCommand implements CommandHandler {
     // Handle list-children macro - fetch actual child pages
     const listChildrenRegex = /<ac:structured-macro[^>]*ac:name="list-children"[^>]*(?:\/>|>.*?<\/ac:structured-macro>)/gis;
     const listChildrenMatches = Array.from(content.matchAll(listChildrenRegex));
-    
+
     for (const match of listChildrenMatches) {
       let replacement = '<!-- Child Pages List -->\n\n';
-      
+
       if (this.api) {
         try {
           const childPages = await this.api.getChildPages(pageId);
@@ -330,7 +343,7 @@ export class TransformCommand implements CommandHandler {
           console.warn(`Failed to fetch child pages for ${pageId}:`, error);
         }
       }
-      
+
       result = result.replace(match[0], replacement);
     }
 
@@ -370,15 +383,15 @@ export class TransformCommand implements CommandHandler {
     }
 
     let result = html;
-    
+
     // Match user links by username
     const usernameRegex = /<ac:link[^>]*><ri:user[^>]*ri:username="([^"]+)"[^>]*\/><\/ac:link>/gi;
     const usernameMatches = Array.from(html.matchAll(usernameRegex));
-    
+
     for (const match of usernameMatches) {
       const username = match[1];
       const user = await this.api.getUserByUsername(username);
-      
+
       if (user) {
         result = result.replace(match[0], `@${user.displayName}`);
       } else {
@@ -389,11 +402,11 @@ export class TransformCommand implements CommandHandler {
     // Match user links by userkey
     const userkeyRegex = /<ac:link[^>]*><ri:user[^>]*ri:userkey="([^"]+)"[^>]*\/><\/ac:link>/gi;
     const userkeyMatches = Array.from(result.matchAll(userkeyRegex));
-    
+
     for (const match of userkeyMatches) {
       const userKey = match[1];
       const user = await this.api.getUserByKey(userKey);
-      
+
       if (user) {
         result = result.replace(match[0], `@${user.displayName}`);
       } else {
@@ -409,20 +422,20 @@ export class TransformCommand implements CommandHandler {
    */
   private cleanMarkdown(markdown: string): string {
     let cleaned = markdown;
-    
+
     // First pass: clean confluence-specific patterns
     cleaned = this.cleanConfluencePatterns(cleaned);
-    
+
     // Second pass: general cleanup
     cleaned = this.cleanGeneral(cleaned);
-    
+
     // Third pass: another round of confluence patterns to catch any new issues
     cleaned = this.cleanConfluencePatterns(cleaned);
-    
+
     // Final cleanup of excessive whitespace
     cleaned = cleaned.replace(/\n{4,}/g, '\n\n\n');
     cleaned = cleaned.trim() + '\n';
-    
+
     return cleaned;
   }
 
@@ -435,25 +448,25 @@ export class TransformCommand implements CommandHandler {
     // Remove standalone bold markers that are not part of content
     // This handles cases like "**\n\n**" or "** **"
     cleaned = cleaned.replace(/\*\*\s*\n\s*\n\s*\*\*/g, '');
-    
+
     // Remove lines that only contain **
     cleaned = cleaned.replace(/^\s*\*\*\s*$/gm, '');
-    
+
     // Remove empty headers (headers with no content)
     cleaned = cleaned.replace(/^#+\s*$/gm, '');
-    
+
     // Remove bold markers around only whitespace
     cleaned = cleaned.replace(/\*\*\s+\*\*/g, ' ');
-    
+
     // Remove italic markers around only whitespace
     cleaned = cleaned.replace(/\*\s+\*/g, ' ');
-    
+
     // Clean up malformed blockquotes
     cleaned = cleaned.replace(/^>\s*$/gm, '');
-    
+
     // Remove empty code blocks
     cleaned = cleaned.replace(/```\s*\n\s*```/g, '');
-    
+
     // Clean up malformed horizontal rules
     cleaned = cleaned.replace(/^[-*_]\s*$/gm, '');
 
@@ -472,35 +485,35 @@ export class TransformCommand implements CommandHandler {
     cleaned = cleaned.replace(/^#+\s*\*\s*$/gm, '');
     cleaned = cleaned.replace(/^#+\s*__\s*$/gm, '');
     cleaned = cleaned.replace(/^#+\s*_\s*$/gm, '');
-    
+
     // Remove headers that only contain bold/italic markers across multiple lines
     // Example: ## **\n\n** (with only whitespace between)
     cleaned = cleaned.replace(/^(#+)\s*\*\*\s*\n+\s*\*\*\s*$/gm, '');
     cleaned = cleaned.replace(/^(#+)\s*\*\s*\n+\s*\*\s*$/gm, '');
-    
+
     // Remove empty bold markers (no content or only whitespace between)
     cleaned = cleaned.replace(/\*\*\s*\*\*/g, '');
     cleaned = cleaned.replace(/__\s*__/g, '');
-    
+
     // Remove standalone italic markers on their own line
     cleaned = cleaned.replace(/^\s*\*\s*$/gm, '');
     cleaned = cleaned.replace(/^\s*_\s*$/gm, '');
-    
+
     // Remove empty italic markers that span multiple lines (only if truly empty)
     cleaned = cleaned.replace(/\*\s*\n+\s*\*/g, '\n\n');
-    
+
     // Remove empty links
     cleaned = cleaned.replace(/\[\s*\]\(\s*\)/g, '');
-    
+
     // Remove empty list items
     cleaned = cleaned.replace(/^[-*+]\s*$/gm, '');
-    
+
     // Clean up excessive blank lines (more than 3 consecutive)
     cleaned = cleaned.replace(/\n{4,}/g, '\n\n\n');
-    
+
     // Remove trailing whitespace from each line
     cleaned = cleaned.replace(/[ \t]+$/gm, '');
-    
+
     // Ensure single trailing newline at end of file
     cleaned = cleaned.trim() + '\n';
 
@@ -512,24 +525,24 @@ export class TransformCommand implements CommandHandler {
    */
   private async createLinksStructure(outputDir: string): Promise<void> {
     const linksDir = path.join(outputDir, 'links');
-    
+
     // Remove existing links folder if it exists
     try {
       await fs.rm(linksDir, { recursive: true, force: true });
     } catch {
       // Ignore if doesn't exist
     }
-    
+
     // Create fresh links folder
     await fs.mkdir(linksDir, { recursive: true });
-    
+
     // Find all MD files recursively
     const findMdFiles = async (dir: string, fileList: Array<{ path: string; relativePath: string }> = []): Promise<Array<{ path: string; relativePath: string }>> => {
       const entries = await fs.readdir(dir, { withFileTypes: true });
-      
+
       for (const entry of entries) {
         const fullPath = path.join(dir, entry.name);
-        
+
         if (entry.isDirectory() && !entry.name.startsWith('_') && entry.name !== 'images' && entry.name !== 'links') {
           await findMdFiles(fullPath, fileList);
         } else if (entry.isFile() && entry.name.endsWith('.md') && !entry.name.startsWith('_')) {
@@ -537,35 +550,35 @@ export class TransformCommand implements CommandHandler {
           fileList.push({ path: fullPath, relativePath });
         }
       }
-      
+
       return fileList;
     };
-    
+
     const mdFiles = await findMdFiles(outputDir);
-    
+
     // Create symlinks in links folder
     for (const file of mdFiles) {
       const linkName = path.basename(file.path);
       const linkPath = path.join(linksDir, linkName);
       const targetPath = path.relative(linksDir, file.path);
-      
+
       try {
         await fs.symlink(targetPath, linkPath);
       } catch (error) {
         console.warn(`  ⚠ Failed to create symlink for ${linkName}:`, error instanceof Error ? error.message : error);
       }
     }
-    
+
     console.log(`  ✓ Created ${mdFiles.length} symlinks in links/`);
-    
+
     // Build tree structure for _links.md
     const tree = this.buildFileTree(mdFiles);
     const treeMarkdown = this.generateTreeMarkdown(tree, outputDir);
-    
+
     // Write _links.md
     const linksFilePath = path.join(outputDir, '_links.md');
     const linksContent = `# Documentation Links\n\n${treeMarkdown}`;
-    
+
     try {
       const formattedContent = await prettier.format(linksContent, {
         parser: 'markdown',
@@ -578,7 +591,7 @@ export class TransformCommand implements CommandHandler {
     } catch {
       await fs.writeFile(linksFilePath, linksContent, 'utf-8');
     }
-    
+
     console.log(`  ✓ Created _links.md with tree structure`);
   }
 
@@ -587,11 +600,11 @@ export class TransformCommand implements CommandHandler {
    */
   private buildFileTree(files: Array<{ path: string; relativePath: string }>): TreeNode {
     const root: TreeNode = { name: '', children: {}, files: [] };
-    
+
     for (const file of files) {
       const parts = file.relativePath.split(path.sep);
       let current = root;
-      
+
       // Navigate/create directory structure
       for (let i = 0; i < parts.length - 1; i++) {
         const part = parts[i];
@@ -600,14 +613,14 @@ export class TransformCommand implements CommandHandler {
         }
         current = current.children[part];
       }
-      
+
       // Add file to current directory
       current.files.push({
         name: parts[parts.length - 1],
         relativePath: file.relativePath
       });
     }
-    
+
     return root;
   }
 
@@ -617,24 +630,24 @@ export class TransformCommand implements CommandHandler {
   private generateTreeMarkdown(node: TreeNode, outputDir: string, level: number = 0): string {
     let result = '';
     const indent = '  '.repeat(level);
-    
+
     // Sort directories and files alphabetically
     const sortedDirs = Object.keys(node.children).sort();
     const sortedFiles = node.files.sort((a, b) => a.name.localeCompare(b.name));
-    
+
     // Add directories first
     for (const dirName of sortedDirs) {
       const child = node.children[dirName];
       result += `${indent}- **${dirName}/**\n`;
       result += this.generateTreeMarkdown(child, outputDir, level + 1);
     }
-    
+
     // Add files
     for (const file of sortedFiles) {
       const linkPath = file.relativePath;
       result += `${indent}- [${file.name}](${linkPath})\n`;
     }
-    
+
     return result;
   }
 
@@ -644,10 +657,10 @@ export class TransformCommand implements CommandHandler {
   private async clearExistingFiles(dir: string): Promise<void> {
     try {
       const entries = await fs.readdir(dir, { withFileTypes: true });
-      
+
       for (const entry of entries) {
         const fullPath = path.join(dir, entry.name);
-        
+
         if (entry.isDirectory()) {
           if (entry.name === 'images' || entry.name === 'links') {
             // Remove entire images and links folders
