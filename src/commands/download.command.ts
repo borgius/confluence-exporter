@@ -103,10 +103,11 @@ export class DownloadCommand implements CommandHandler {
       const pagePath = pagePathMap.get(entry.id) || rootDir;
 
       // Skip if HTML file already exists
-      const skip = existsSync(pagePath);
-
+      const filename = `${entry.id}-${this.slugify(entry.title)}.html`;
+      const skip = existsSync(`${pagePath}/${filename}`);
+ 
       const deep = Math.max(0, pagePath.split(path.sep).length - rootDir.split(path.sep).length - 1);
-      console.log(`${'  '.repeat(deep)}/${pagePath.split(path.sep).pop()} [${i + 1}/${queue.length}] ${skip ? '(⏭️ skipped)' : ''}`);
+      console.log(`${'  '.repeat(deep)}/${filename} [${i + 1}/${queue.length}] ${skip ? '(⏭️ skipped)' : ''}`);
 
       try {
         // Create directory if it doesn't exist
