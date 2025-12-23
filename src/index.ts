@@ -5,6 +5,8 @@
 
 import minimist from 'minimist';
 import { config as loadEnv } from 'dotenv';
+import { promises as fs } from 'fs';
+import path from 'path';
 import { CommandExecutor } from './commands/executor.js';
 import { HelpCommand } from './commands/help.command.js';
 import type { ConfluenceConfig } from './types.js';
@@ -32,8 +34,8 @@ async function main() {
     }
   });
 
-  // Show help if requested or no commands provided
-  if (args.help || args._.length === 0) {
+  // Show help if requested
+  if (args.help) {
     const helpCommand = new HelpCommand();
     await helpCommand.execute({ config: {} as ConfluenceConfig, args });
     process.exit(0);
@@ -55,6 +57,21 @@ async function main() {
     parallel: args.parallel ? parseInt(args.parallel, 10) : 5
   };
 
+  // Extract commands from positional arguments
+  let commands: string[];
+  if (args._.length === 0) {
+    // No commands provided - run full sync workflow
+    const indexPath = path.join(config.outputDir, '_index.yaml');
+    try {
+      await fs.access(indexPath);
+      commands = ['update', 'plan', 'download', 'transform'];
+    } catch {
+      commands = ['index', 'plan', 'download', 'transform'];
+    }
+  } else {
+    commands = args._ as string[];
+  }
+
   // Configure logger debug mode if requested
   if ((config as any).debug) {
     // Lazy import to avoid top-level cycles
@@ -70,9 +87,6 @@ async function main() {
     process.exit(1);
   }
 
-
-  // Extract commands from positional arguments
-  const commands = args._ as string[];
   const executor = new CommandExecutor(config);
 
   // Validate commands

@@ -12,7 +12,8 @@ export class HelpCommand implements CommandHandler {
 
   private showHelp(): void {
     console.log('Minimal Confluence to Markdown Exporter\n');
-    console.log('Usage: node index.js <command> [options]\n');
+    console.log('Usage: node index.js [command] [options]\n');
+    console.log('If no command is provided, runs full sync: update index (or create if not exists), plan, download, and transform.\n');
     console.log('Commands:');
     console.log('  help                          Show this help message');
     console.log('  index                         Create _index.yaml with page metadata');

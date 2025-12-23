@@ -556,8 +556,14 @@ npm run dev -- index plan download transform -u URL -n USER -p TOKEN -s SPACE
 Uses `minimist` for flexible CLI arguments.
 
 ```bash
-# Show help (no commands or --help flag)
-node index.js
+# Full sync workflow (no commands provided)
+node index.js -u https://site.atlassian.net \
+              -n user@example.com \
+              -p token123 \
+              -s MYSPACE \
+              -o ./export
+
+# Show help
 node index.js help
 node index.js --help
 
@@ -601,7 +607,7 @@ node index.js download -u URL -n USER -p PASS -s SPACE -o DIR -i ID
 
 ### Command Behavior
 
-1. **No commands provided**: Shows help and exits
+1. **No commands provided**: Runs full sync workflow (update index if exists or create new, then plan, download, transform)
 2. **Invalid command**: Shows error + help and exits with code 1
 3. **Multiple commands**: Executes in sequence with visual separators
 4. **`help` command**: Shows help and exits (other commands ignored)
