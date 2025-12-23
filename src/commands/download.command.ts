@@ -120,7 +120,7 @@ export class DownloadCommand implements CommandHandler {
     }
 
     // Download pages from queue using the path map in batches
-    const batchSize = 20;
+    const batchSize = 50;
     for (let batchStart = 0; batchStart < queue.length; batchStart += batchSize) {
       const batchEnd = Math.min(batchStart + batchSize, queue.length);
       const batch = queue.slice(batchStart, batchEnd);

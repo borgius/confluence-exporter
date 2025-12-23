@@ -1,17 +1,19 @@
 # Minimal Confluence to Markdown Exporter
 
-A lightweight, standalone CLI tool to export Confluence spaces to Markdown files.
+A lightweight, standalone CLI tool to export Confluence spaces to Markdown files with hierarchical folder structure.
 
 ## Features
 
 - 🚀 Minimal dependencies (uses native Node.js fetch)
-- 📄 Fetches all pages from a Confluence space
-- 🔄 Basic HTML to Markdown transformation
-- 📝 Generates front matter with page metadata
-- 💾 Saves pages as `.md` files with safe filenames
-- 👤 Resolves user links to display names (with caching)
-- 📦 Saves original HTML alongside markdown files
-- ✨ Formats both Markdown and HTML files with Prettier for readability
+- 📄 Command-based CLI with five commands: `help`, `index`, `update`, `plan`, `download`, `transform`
+- 🔄 Four-phase export workflow (indexing → planning → downloading → transforming)
+- 📁 Hierarchical folder structure based on page tree (mirrors Confluence hierarchy)
+- 📝 Separate HTML download and Markdown transformation for flexibility
+- 🔗 HTML to Markdown transformation with Confluence macro support
+- 👤 User link resolution with intelligent caching
+- 📎 Image/attachment downloading with automatic slugification
+- 💾 YAML-based indexing with resume capability
+- ✨ Prettier formatting for consistent output
 
 ## Prerequisites
 
@@ -19,93 +21,185 @@ A lightweight, standalone CLI tool to export Confluence spaces to Markdown files
 
 ## Usage
 
-### Option 1: Command Line Arguments
-
 ```bash
-node index.js <baseUrl> <username> <password> <spaceKey> [outputDir]
+node index.js <command> [options]
 ```
 
-Example:
+### Commands
+
+- `help` - Display usage information
+- `index` - Create page inventory (`_index.yaml`)
+- `update` - Check for new/updated pages and update `_index.yaml`
+- `plan` - Create download queue and tree structure (`_queue.yaml` + `_tree.yaml`)
+- `download` - Download HTML pages from queue
+- `transform` - Transform HTML files to Markdown (skips existing MD files)
+
+Commands can be chained to run in sequence:
 ```bash
-node index.js https://mysite.atlassian.net user@example.com mypassword MYSPACE ./output
+node index.js index plan download transform [options]
 ```
 
-### Option 2: Environment Variables
+### Options
 
+| Flag | Long Form | Description | Default |
+|------|-----------|-------------|---------|
+| `-u` | `--url` | Confluence base URL | env: `CONFLUENCE_BASE_URL` |
+| `-n` | `--username` | Username/email | env: `CONFLUENCE_USERNAME` |
+| `-p` | `--password` | API token | env: `CONFLUENCE_PASSWORD` |
+| `-s` | `--space` | Space key | env: `CONFLUENCE_SPACE_KEY` |
+| `-o` | `--output` | Output directory | `./output` or env: `OUTPUT_DIR` |
+| `-i` | `--pageId` | Single page ID (optional) | none |
+| `-l` | `--limit` | Limit number of pages to process | none |
+| `-f` | `--force` | Force re-download of all pages (skip version check) | false |
+| | `--pageSize` | API page size | `25` |
+| `-h` | `--help` | Show help message | |
+
+### Environment Variables
+
+- `CONFLUENCE_BASE_URL`
+- `CONFLUENCE_USERNAME`
+- `CONFLUENCE_PASSWORD`
+- `CONFLUENCE_SPACE_KEY`
+- `OUTPUT_DIR`
+
+## Examples
+
+### Full Space Export (4-phase workflow)
 ```bash
-export CONFLUENCE_BASE_URL="https://mysite.atlassian.net"
-export CONFLUENCE_USERNAME="user@example.com"
-export CONFLUENCE_PASSWORD="mypassword"
-export CONFLUENCE_SPACE_KEY="MYSPACE"
-export OUTPUT_DIR="./output"  # optional
-
-node index.js
+node index.js index plan download transform -u https://mysite.atlassian.net -n user@example.com -p token -s MYSPACE -o ./output
 ```
 
-## Output
-
-The tool will create markdown files in the output directory with:
-
-- **Markdown file** (`.md`) - Front matter + converted markdown content
-- **HTML file** (`.html`) - Original Confluence storage format for reference
-- **Safe filenames** generated from page titles
-
-Example output files:
-```
-output/
-├── my-page-title.md
-├── my-page-title.html
-├── another-page.md
-└── another-page.html
+### Full Space Export with Limit (process first 10 pages only)
+```bash
+node index.js index plan download transform -u https://mysite.atlassian.net -n user@example.com -p token -s MYSPACE -o ./output -l 10
 ```
 
-Example markdown file:
-```markdown
+### Create Index Only (Phase 1)
+```bash
+node index.js index -u https://mysite.atlassian.net -n user@example.com -p token -s MYSPACE
+```
+
+### Check for New/Updated Pages and Update Existing Index
+```bash
+node index.js update -u https://mysite.atlassian.net -n user@example.com -p token -s MYSPACE
+```
+
+### Create Download Queue from Existing Index (Phase 2)
+```bash
+node index.js plan -u https://mysite.atlassian.net -n user@example.com -p token -s MYSPACE
+```
+
+### Create Download Queue for Specific Page and All Children
+```bash
+node index.js plan -i 123456789 -u https://mysite.atlassian.net -n user@example.com -p token -s MYSPACE
+```
+
+### Force Re-download All Pages (ignore version check)
+```bash
+node index.js plan --force -u https://mysite.atlassian.net -n user@example.com -p token -s MYSPACE
+```
+
+### Download HTML Pages from Existing Queue (Phase 3)
+```bash
+node index.js download -u https://mysite.atlassian.net -n user@example.com -p token -s MYSPACE
+```
+
+### Transform HTML to Markdown (Phase 4)
+```bash
+node index.js transform -u https://mysite.atlassian.net -n user@example.com -p token -s MYSPACE
+```
+
+### Download and Transform Together
+```bash
+node index.js download transform -u https://mysite.atlassian.net -n user@example.com -p token -s MYSPACE
+```
+
+### Download Single Page HTML Only (no index/plan needed)
+```bash
+node index.js download -i 123456789 -u https://mysite.atlassian.net -n user@example.com -p token -s MYSPACE
+```
+
+## Output Structure
+
+### Hierarchical Structure (when `_tree.yaml` exists)
+```
+outputDir/
+├── _index.yaml                    # Page index (YAML array)
+├── _queue.yaml                    # Download queue (YAML array)
+├── _tree.yaml                     # Hierarchical page tree structure
+└── MYSPACE/                       # Root folder (space key)
+    ├── 123456-page-title.html
+    ├── 123456-page-title.md
+    └── 123456-page-title/         # Folder for children
+        ├── images/                # Images for child pages
+        │   └── logo.png
+        ├── 789012-child-page.html
+        ├── 789012-child-page.md
+        └── 789012-child-page/      # Nested children
+            ├── 345678-grandchild.html
+            └── 345678-grandchild.md
+```
+
+### Flat Structure (fallback when only `_queue.yaml` exists)
+```
+outputDir/
+├── _index.yaml         # Page index (YAML array)
+├── _queue.yaml         # Download queue (YAML array)
+├── page-title-1.md     # Formatted markdown
+├── page-title-1.html   # Original HTML (formatted)
+├── page-title-2.md
+├── page-title-2.html
+└── images/             # Shared images folder
+    ├── image-1.png
+    └── image-2.jpg
+```
+
+## Front Matter Format
+
+```yaml
 ---
-title: "My Page Title"
-id: "123456"
-url: "https://mysite.atlassian.net/pages/viewpage.action?pageId=123456"
+title: "Page Title"
+id: "123456789"
+url: "https://mysite.atlassian.net/pages/viewpage.action?pageId=123456789"
 version: 5
-parentId: "789012"
+parentId: "987654321"
 ---
-
-# My Page Title
-
-This is the page content converted to Markdown...
 ```
 
-The HTML file contains the original Confluence storage format (XML/HTML) which can be useful for:
-- Debugging transformation issues
-- Preserving the original content
-- Manual inspection of complex macros
-
-**Prettier Formatting:**
-Both Markdown and HTML files are automatically formatted with Prettier for better readability:
+## Prettier Formatting
 
 **Markdown:**
-- 120 character line width
-- Preserves prose wrapping (doesn't re-wrap text)
-- 2-space indentation for lists and nested content
-- Consistent spacing and formatting
+- `printWidth: 120`
+- `proseWrap: 'preserve'` (don't reflow text)
+- `tabWidth: 2`
 
 **HTML:**
-- Consistent indentation (2 spaces)
-- 120 character line width
-- Proper tag spacing
-- HTML whitespace sensitivity ignored for cleaner output
+- `printWidth: 120`
+- `htmlWhitespaceSensitivity: 'ignore'`
+- Consistent 2-space indentation
 
-If formatting fails for any file, the original unformatted content is saved with a warning.
+Formatting failures are non-fatal (saves unformatted with warning).
 
-## Structure
+## Project Structure
 
 ```
-src2/
+src/
+├── index.ts          # CLI entry point (arg parsing, config validation)
 ├── types.ts          # TypeScript type definitions
-├── api.ts            # Confluence API client
-├── transformer.ts    # HTML to Markdown converter
-├── runner.ts         # Export orchestration logic
-├── index.ts          # CLI entry point
-└── README.md         # This file
+├── api.ts            # Confluence REST API client
+├── transformer.ts    # HTML → Markdown conversion
+├── cleaner.ts        # Post-processing cleanup
+└── commands/         # Command handlers (modular architecture)
+    ├── types.ts      # Command-related type definitions
+    ├── help.command.ts      # Help command handler
+    ├── index.command.ts     # Index command handler
+    ├── update.command.ts    # Update command handler
+    ├── plan.command.ts      # Plan command handler
+    ├── download.command.ts  # Download command handler (HTML only)
+    ├── transform.command.ts # Transform command handler (HTML → MD)
+    ├── registry.ts   # Command registry (maps commands to handlers)
+    ├── executor.ts   # Command executor (orchestrates execution)
+    └── index.ts      # Exports for easy importing
 ```
 
 ## User Link Resolution
@@ -131,29 +225,43 @@ Features:
 - ✓ Falls back to username if API fails
 - ✓ Handles unknown users gracefully
 
-## Limitations
-
-This is a minimal implementation and has the following limitations:
-
-- Basic HTML to Markdown conversion (may not handle all Confluence macros)
-- No attachment download support
-- No link rewriting for internal page references
-- No incremental export (always exports all pages)
-- No error recovery or retry logic
-- No post-processing cleanup
-
-For a full-featured exporter, see the main `src` directory.
-
 ## Development
 
-Compile TypeScript:
+### Build & Run
+
 ```bash
-npx tsc src2/*.ts --outDir dist --module es2022 --target es2022
+# Build TypeScript
+npm run build          # Uses Vite
+npm run build:tsc      # Uses tsc directly
+
+# Run compiled
+npm start -- [args]
+
+# Development mode
+npm run dev -- [args]           # Run once
+npm run dev:watch -- [args]     # Watch mode
 ```
 
-Run:
+### Testing
+
 ```bash
-node dist/index.js [arguments]
+npm test                        # Run all tests
+npm run test:watch              # Watch mode
+npm run test:coverage           # With coverage
+```
+
+### Linting & Type Checking
+
+```bash
+npm run lint                    # ESLint
+npm run typecheck               # TypeScript --noEmit
+```
+
+### Cleaning
+
+```bash
+npm run clean                   # Remove dist/
+npm run rebuild                 # Clean + build
 ```
 
 ## License
