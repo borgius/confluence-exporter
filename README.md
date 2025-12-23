@@ -32,7 +32,7 @@ node index.js <command> [options]
 - `update` - Check for new/updated pages and update `_index.yaml`
 - `plan` - Create download queue and tree structure (`_queue.yaml` + `_tree.yaml`)
 - `download` - Download HTML pages from queue
-- `transform` - Transform HTML files to Markdown (skips existing MD files)
+- `transform` - Transform HTML files to Markdown (skips existing MD files, creates links structure)
 
 Commands can be chained to run in sequence:
 ```bash
@@ -51,6 +51,7 @@ node index.js index plan download transform [options]
 | `-i` | `--pageId` | Single page ID (optional) | none |
 | `-l` | `--limit` | Limit number of pages to process | none |
 | `-f` | `--force` | Force re-download of all pages (skip version check) | false |
+| | `--clear` | Clear existing MD files and images before transforming | false |
 | | `--pageSize` | API page size | `25` |
 | `-h` | `--help` | Show help message | |
 
@@ -109,6 +110,11 @@ node index.js download -u https://mysite.atlassian.net -n user@example.com -p to
 node index.js transform -u https://mysite.atlassian.net -n user@example.com -p token -s MYSPACE
 ```
 
+### Transform HTML to Markdown with Clear (remove existing MD files first)
+```bash
+node index.js transform --clear -u https://mysite.atlassian.net -n user@example.com -p token -s MYSPACE
+```
+
 ### Download and Transform Together
 ```bash
 node index.js download transform -u https://mysite.atlassian.net -n user@example.com -p token -s MYSPACE
@@ -118,6 +124,29 @@ node index.js download transform -u https://mysite.atlassian.net -n user@example
 ```bash
 node index.js download -i 123456789 -u https://mysite.atlassian.net -n user@example.com -p token -s MYSPACE
 ```
+
+## Transform Command Details
+
+The `transform` command converts downloaded HTML files from Confluence into Markdown format with the following features:
+
+### Key Features
+- **HTML to Markdown Conversion**: Handles Confluence-specific elements like macros (code blocks, panels, user links), images, headers, lists, and links
+- **Image Handling**: Downloads attachments referenced in Confluence image tags and saves them in `images/` subdirectories
+- **Macro Support**: Transforms Confluence macros (e.g., `list-children` fetches child pages, `code` blocks become fenced code, panels become blockquotes)
+- **User Link Resolution**: Converts Confluence user links to `@displayName` format using API calls
+- **Cleanup and Formatting**: Removes HTML tags, entities, and malformed Markdown patterns; formats output with Prettier
+- **Links Structure**: Creates a `links/` folder with symlinks to all MD files and a `_links.md` file showing a hierarchical tree
+- **Resume Capability**: Skips existing Markdown files to allow incremental runs
+- **Error Handling**: Non-fatal errors (e.g., failed image downloads) are logged as warnings
+
+### Options
+- `--clear`: Remove existing MD files and images folders before transforming (useful for re-processing)
+- `--limit <number>`: Process only the first N HTML files
+
+### Output
+- Markdown files with YAML front matter (title, ID, URL, version, parentId)
+- Downloaded images in `images/` subdirectories per page
+- `links/` folder with symlinks and hierarchical index (`_links.md`)
 
 ## Output Structure
 
