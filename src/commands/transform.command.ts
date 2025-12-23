@@ -86,165 +86,171 @@ export class TransformCommand implements CommandHandler {
       logger.info();
     }
 
-    // Process each HTML file
-    for (let i = 0; i < filesToProcess.length; i++) {
-      const htmlFilepath = filesToProcess[i];
-      const htmlFile = path.basename(htmlFilepath);
-      const dirPath = path.dirname(htmlFilepath);
-      const baseFilename = htmlFile.replace('.html', '');
-      const mdFilename = `${baseFilename}.md`;
-      const mdFilepath = path.join(dirPath, mdFilename);
-      const id = baseFilename.split('-')[0];
+    // Process HTML files in parallel batches of 20
+    const batchSize = 20;
+    const batches = [];
+    for (let i = 0; i < filesToProcess.length; i += batchSize) {
+      batches.push(filesToProcess.slice(i, i + batchSize));
+    }
 
-      // Show relative path for better readability
-      const relativePath = path.relative(this.config.outputDir, htmlFilepath);
-      logger.info(`[${i + 1}/${filesToProcess.length}] Checking: ${htmlFilepath}`);
-      logger.debug(`Processing file ${baseFilename} (ID: ${id})`);
+    for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+      const batch = batches[batchIndex];
+      const batchStart = batchIndex * batchSize + 1;
+      const batchEnd = Math.min((batchIndex + 1) * batchSize, filesToProcess.length);
+      logger.info(`Processing batch ${batchIndex + 1}/${batches.length} (files ${batchStart}-${batchEnd})`);
 
-      // Check if MD file already exists
-      try {
-        await fs.access(mdFilepath);
-        if (this.config.force) {
-          logger.info(`  ⚑ Force: Overwriting existing ${mdFilename}`);
-          // If forcing, remove existing images folder for this page to avoid stale files
-          try {
-            const imagesDir = path.join(dirPath, 'images');
-            await fs.rm(imagesDir, { recursive: true, force: true });
-            logger.info(`  ✓ Removed existing images/ for ${baseFilename}`);
-          } catch (err) {
-            // Non-fatal if images removal fails
-            logger.warn(`  ⚠ Could not remove images for ${baseFilename}:`, err instanceof Error ? err.message : err);
-          }
-        } else {
-          logger.info(`  ⊘ Skipped: ${mdFilename} already exists`);
-          skippedCount++;
-          continue;
-        }
-      } catch {
-        // MD file doesn't exist, proceed with transformation
-      }
-
-      try {
-        logger.debug(`Reading HTML content from ${htmlFilepath}`);
-        // Read HTML content
-        const htmlContent = await fs.readFile(htmlFilepath, 'utf-8');
-        logger.debug(`HTML content length: ${htmlContent.length} characters`);
-
-        // Parse the title from filename (reverse slugification is lossy, but best effort)
-        const title = unslugify(baseFilename);
-        logger.debug(`Parsed title: "${title}"`);
-
-        logger.debug(`Starting HTML to Markdown transformation`);
-        // Transform HTML to Markdown
-        const images: Array<{ filename: string; data: Buffer }> = [];
-        const markdownBody = await this.htmlToMarkdown(htmlContent, id, images);
-        logger.debug(`Transformation complete, markdown length: ${markdownBody.length} characters`);
-
-        // Build original page URL (use baseUrl if available)
-        const originalUrl = this.config.baseUrl
-          ? `${this.config.baseUrl}/pages/viewpage.action?pageId=${id}`
-          : '';
-        logger.debug(`Original URL: ${originalUrl || 'none'}`);
-
-        // Create front matter
-        const frontMatter = [
-          '---',
-          `title: "${title.replace(/"/g, '\\"') }"`,
-          `id: "${id}"`,
-          originalUrl ? `url: "${originalUrl}"` : '',
-          '---'
-        ].filter(Boolean).join('\n');
-        logger.debug(`Front matter created`);
-
-        // Before finalizing, replace any pending include placeholders inside markdownBody
-        let finalBody = markdownBody;
-        logger.debug(`Processing ${this.pendingIncludes.length} pending includes`);
-        for (const include of this.pendingIncludes) {
-          // Replace raw placeholder
-          finalBody = finalBody.replace(include.placeholder, include.content);
-          // Some converters escape underscores/backslashes; also replace escaped variants
-          const escaped = include.placeholder.replace(/_/g, '\\_');
-          finalBody = finalBody.replace(escaped, include.content);
-          // And double-escaped (e.g. \__INCLUDE_1__)
-          const doubleEscaped = escaped.replace(/\\/g, '\\\\');
-          finalBody = finalBody.replace(doubleEscaped, include.content);
-        }
-        logger.debug(`Include placeholders replaced`);
-
-        // Combine front matter and content
-        const markdownContent = `${frontMatter}\n\n${finalBody}`;
-        logger.debug(`Combined content length: ${markdownContent.length} characters`);
-
-        // Save images if any (in the same directory as the page)
-        if (images.length > 0) {
-          logger.debug(`Saving ${images.length} images`);
-          const imagesDir = path.join(dirPath, 'images');
-          await fs.mkdir(imagesDir, { recursive: true });
-
-          for (const image of images) {
-            const imagePath = path.join(imagesDir, image.filename);
-            await fs.writeFile(imagePath, image.data);
-          }
-          logger.info(`  ✓ Saved ${images.length} image(s)`);
-        } else {
-          logger.debug(`No images to save`);
-        }
-
-        logger.debug(`Performing final cleanup`);
-        // Final cleanup: unescape any remaining backslashes before [],() produced by converters
-        let finalMarkdownToWrite = markdownContent
-          // Remove escaped bracket/paren characters produced by converters (e.g. \[ \] \( \) )
-          .replace(/\\([\[\]\(\)])/g, '$1');
-        logger.debug(`Final markdown length: ${finalMarkdownToWrite.length} characters`);
-
-        logger.debug(`Formatting with Prettier`);
-
-        // Format and write markdown file
-        try {
-          const formattedMarkdown = await prettier.format(markdownContent, {
-            parser: 'markdown',
-            printWidth: 120,
-            proseWrap: 'preserve',
-            tabWidth: 2,
-            useTabs: false
-          });
-          // Prefer the prettier-formatted version of cleaned content
-          const formatted = await prettier.format(finalMarkdownToWrite, {
-            parser: 'markdown',
-            printWidth: 120,
-            proseWrap: 'preserve',
-            tabWidth: 2,
-            useTabs: false
-          });
-          logger.debug(`Writing formatted markdown to ${mdFilepath}`);
-          await fs.writeFile(mdFilepath, formatted, 'utf-8');
-          logger.info(`  ✓ Transformed: ${mdFilename} (formatted)`);
-        } catch {
-          // If formatting fails, save unformatted markdown
-          logger.warn(`  ⚠ Could not format Markdown, saving unformatted`);
-          logger.debug(`Writing unformatted markdown to ${mdFilepath}`);
-          await fs.writeFile(mdFilepath, finalMarkdownToWrite, 'utf-8');
-          logger.info(`  ✓ Transformed: ${mdFilename}`);
-        }
-
-        transformedCount++;
-      } catch (error) {
-        logger.error(`  ✗ Failed to transform ${htmlFile}:`, error instanceof Error ? error.message : error);
-        errorCount++;
-      }
+      await Promise.all(batch.map(async (htmlFilepath, indexInBatch) => {
+        const globalIndex = batchIndex * batchSize + indexInBatch;
+        await this.processFile(htmlFilepath, globalIndex + 1, filesToProcess.length);
+      }));
     }
 
     logger.info(`\n✓ Transformation complete!`);
-    logger.info(`  Transformed: ${transformedCount} files`);
-    logger.info(`  Skipped: ${skippedCount} files (MD already exists)`);
-    if (errorCount > 0) {
-      logger.info(`  Errors: ${errorCount} files`);
-    }
+    logger.info(`  Processed: ${filesToProcess.length} files in ${batches.length} batches`);
+    logger.info(`  Note: Files are processed in parallel batches of up to ${batchSize} pages each`);
+    logger.info(`  Check individual file logs above for skipped/transformed status`);
 
     // Create links folder and _links.md file
     logger.info('\nCreating links folder and _links.md file...');
     await this.createLinksStructure(this.config.outputDir);
     logger.info('✓ Links structure created');
+  }
+
+  /**
+   * Process a single HTML file to Markdown
+   */
+  private async processFile(htmlFilepath: string, index: number, total: number): Promise<void> {
+    const htmlFile = path.basename(htmlFilepath);
+    const dirPath = path.dirname(htmlFilepath);
+    const baseFilename = htmlFile.replace('.html', '');
+    const mdFilename = `${baseFilename}.md`;
+    const mdFilepath = path.join(dirPath, mdFilename);
+    const id = baseFilename.split('-')[0];
+
+    // Show relative path for better readability
+    const relativePath = path.relative(this.config.outputDir, htmlFilepath);
+    logger.info(`[${index}/${total}] Checking: ${relativePath}`);
+    logger.debug(`Processing file ${baseFilename} (ID: ${id})`);
+
+    // Check if MD file already exists
+    try {
+      await fs.access(mdFilepath);
+      if (this.config.force) {
+        logger.info(`  ⚑ Force: Overwriting existing ${mdFilename}`);
+        // If forcing, remove existing images folder for this page to avoid stale files
+        try {
+          const imagesDir = path.join(dirPath, 'images');
+          await fs.rm(imagesDir, { recursive: true, force: true });
+          logger.info(`  ✓ Removed existing images/ for ${baseFilename}`);
+        } catch (err) {
+          // Non-fatal if images removal fails
+          logger.warn(`  ⚠ Could not remove images for ${baseFilename}:`, err instanceof Error ? err.message : err);
+        }
+      } else {
+        logger.info(`  ⊘ Skipped: ${mdFilename} already exists`);
+        return;
+      }
+    } catch {
+      // MD file doesn't exist, proceed with transformation
+    }
+
+    try {
+      logger.debug(`Reading HTML content from ${htmlFilepath}`);
+      // Read HTML content
+      const htmlContent = await fs.readFile(htmlFilepath, 'utf-8');
+      logger.debug(`HTML content length: ${htmlContent.length} characters`);
+
+      // Parse the title from filename (reverse slugification is lossy, but best effort)
+      const title = unslugify(baseFilename);
+      logger.debug(`Parsed title: "${title}"`);
+
+      logger.debug(`Starting HTML to Markdown transformation`);
+      // Transform HTML to Markdown
+      const images: Array<{ filename: string; data: Buffer }> = [];
+      const markdownBody = await this.htmlToMarkdown(htmlContent, id, images);
+      logger.debug(`Transformation complete, markdown length: ${markdownBody.length} characters`);
+
+      // Build original page URL (use baseUrl if available)
+      const originalUrl = this.config.baseUrl
+        ? `${this.config.baseUrl}/pages/viewpage.action?pageId=${id}`
+        : '';
+      logger.debug(`Original URL: ${originalUrl || 'none'}`);
+
+      // Create front matter
+      const frontMatter = [
+        '---',
+        `title: "${title.replace(/"/g, '\\"') }"`,
+        `id: "${id}"`,
+        originalUrl ? `url: "${originalUrl}"` : '',
+        '---'
+      ].filter(Boolean).join('\n');
+      logger.debug(`Front matter created`);
+
+      // Before finalizing, replace any pending include placeholders inside markdownBody
+      let finalBody = markdownBody;
+      logger.debug(`Processing ${this.pendingIncludes.length} pending includes`);
+      for (const include of this.pendingIncludes) {
+        // Replace raw placeholder
+        finalBody = finalBody.replace(include.placeholder, include.content);
+        // Some converters escape underscores/backslashes; also replace escaped variants
+        const escaped = include.placeholder.replace(/_/g, '\\_');
+        finalBody = finalBody.replace(escaped, include.content);
+        // And double-escaped (e.g. \__INCLUDE_1__)
+        const doubleEscaped = escaped.replace(/\\/g, '\\\\');
+        finalBody = finalBody.replace(doubleEscaped, include.content);
+      }
+      logger.debug(`Include placeholders replaced`);
+
+      // Combine front matter and content
+      const markdownContent = `${frontMatter}\n\n${finalBody}`;
+      logger.debug(`Combined content length: ${markdownContent.length} characters`);
+
+      // Save images if any (in the same directory as the page)
+      if (images.length > 0) {
+        logger.debug(`Saving ${images.length} images`);
+        const imagesDir = path.join(dirPath, 'images');
+        await fs.mkdir(imagesDir, { recursive: true });
+
+        for (const image of images) {
+          const imagePath = path.join(imagesDir, image.filename);
+          await fs.writeFile(imagePath, image.data);
+        }
+        logger.info(`  ✓ Saved ${images.length} image(s) for ${baseFilename}`);
+      } else {
+        logger.debug(`No images to save`);
+      }
+
+      logger.debug(`Performing final cleanup`);
+      // Final cleanup: unescape any remaining backslashes before [],() produced by converters
+      let finalMarkdownToWrite = markdownContent
+        // Remove escaped bracket/paren characters produced by converters (e.g. \[ \] \( \) )
+        .replace(/\\([\[\]\(\)])/g, '$1');
+      logger.debug(`Final markdown length: ${finalMarkdownToWrite.length} characters`);
+
+      logger.debug(`Formatting with Prettier`);
+
+      // Format and write markdown file
+      try {
+        const formatted = await prettier.format(finalMarkdownToWrite, {
+          parser: 'markdown',
+          printWidth: 120,
+          proseWrap: 'preserve',
+          tabWidth: 2,
+          useTabs: false
+        });
+        logger.debug(`Writing formatted markdown to ${mdFilepath}`);
+        await fs.writeFile(mdFilepath, formatted, 'utf-8');
+        logger.info(`  ✓ Transformed: ${mdFilename} (formatted)`);
+      } catch {
+        // If formatting fails, save unformatted markdown
+        logger.warn(`  ⚠ Could not format Markdown, saving unformatted`);
+        logger.debug(`Writing unformatted markdown to ${mdFilepath}`);
+        await fs.writeFile(mdFilepath, finalMarkdownToWrite, 'utf-8');
+        logger.info(`  ✓ Transformed: ${mdFilename}`);
+      }
+    } catch (error) {
+      logger.error(`  ✗ Failed to transform ${htmlFile}:`, error instanceof Error ? error.message : error);
+    }
   }
 
   /**
@@ -309,6 +315,7 @@ export class TransformCommand implements CommandHandler {
     markdown = htmlToMarkdown(markdown);
 
     // Trim whitespace in Markdown table cells
+    logger.debug(`Trimming whitespace in Markdown table cells`);
     markdown = markdown.replace(/^\|(.+)\|$/gm, (line) => {
       const parts = line.split('|');
       const trimmedParts = parts.map(part => part.trim());
