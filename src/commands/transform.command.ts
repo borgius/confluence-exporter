@@ -65,7 +65,7 @@ export class TransformCommand implements CommandHandler {
       };
 
       // Find all HTML files recursively
-      htmlFiles.concat(await findHtmlFiles(this.config.outputDir));
+      htmlFiles.push(...await findHtmlFiles(this.config.outputDir));
     }
     if (htmlFiles.length === 0) {
       console.log('No HTML files found to transform.');
@@ -100,9 +100,23 @@ export class TransformCommand implements CommandHandler {
       // Check if MD file already exists
       try {
         await fs.access(mdFilepath);
-        console.log(`  ⊘ Skipped: ${mdFilename} already exists`);
-        skippedCount++;
-        continue;
+        if (this.config.force) {
+          console.log(`  ⚑ Force: Overwriting existing ${mdFilename}`);
+          // If forcing, remove existing images folder for this page to avoid stale files
+          try {
+            const imagesDir = path.join(dirPath, 'images');
+            await fs.rm(imagesDir, { recursive: true, force: true });
+            console.log(`  ✓ Removed existing images/ for ${baseFilename}`);
+          } catch (err) {
+            // Non-fatal if images removal fails
+            // eslint-disable-next-line no-console
+            console.warn(`  ⚠ Could not remove images for ${baseFilename}:`, err instanceof Error ? err.message : err);
+          }
+        } else {
+          console.log(`  ⊘ Skipped: ${mdFilename} already exists`);
+          skippedCount++;
+          continue;
+        }
       } catch {
         // MD file doesn't exist, proceed with transformation
       }
@@ -116,7 +130,7 @@ export class TransformCommand implements CommandHandler {
 
         // Transform HTML to Markdown
         const images: Array<{ filename: string; data: Buffer }> = [];
-        const markdownBody = await this.htmlToMarkdown(htmlContent, baseFilename, images);
+        const markdownBody = await this.htmlToMarkdown(htmlContent, id, images);
 
         // Build original page URL (use baseUrl if available)
         const originalUrl = this.config.baseUrl
@@ -160,6 +174,11 @@ export class TransformCommand implements CommandHandler {
           console.log(`  ✓ Saved ${images.length} image(s)`);
         }
 
+        // Final cleanup: unescape any remaining backslashes before [],() produced by converters
+        let finalMarkdownToWrite = markdownContent
+          // Remove escaped bracket/paren characters produced by converters (e.g. \[ \] \( \) )
+          .replace(/\\([\[\]\(\)])/g, '$1');
+
         // Format and write markdown file
         try {
           const formattedMarkdown = await prettier.format(markdownContent, {
@@ -169,12 +188,20 @@ export class TransformCommand implements CommandHandler {
             tabWidth: 2,
             useTabs: false
           });
-          await fs.writeFile(mdFilepath, formattedMarkdown, 'utf-8');
+          // Prefer the prettier-formatted version of cleaned content
+          const formatted = await prettier.format(finalMarkdownToWrite, {
+            parser: 'markdown',
+            printWidth: 120,
+            proseWrap: 'preserve',
+            tabWidth: 2,
+            useTabs: false
+          });
+          await fs.writeFile(mdFilepath, formatted, 'utf-8');
           console.log(`  ✓ Transformed: ${mdFilename} (formatted)`);
         } catch {
           // If formatting fails, save unformatted markdown
           console.warn(`  ⚠ Could not format Markdown, saving unformatted`);
-          await fs.writeFile(mdFilepath, markdownContent, 'utf-8');
+          await fs.writeFile(mdFilepath, finalMarkdownToWrite, 'utf-8');
           console.log(`  ✓ Transformed: ${mdFilename}`);
         }
 
@@ -242,6 +269,11 @@ export class TransformCommand implements CommandHandler {
     // Restore page links that were escaped by htmlToMarkdown
     // Pattern: \[Title\](url.md) -> [Title](url.md)
     markdown = markdown.replace(/\\?\[([^\]]+)\\?\]\\?\(([^)]+\.md)\\?\)/g, '[$1]($2)');
+
+    // Unescape image and link bracket escaping produced by converters
+    // Example: !\[image.png\]\(images/image.png\) -> ![image.png](images/image.png)
+    markdown = markdown.replace(/!\\\[([^\]]+)\\\]\(\s*([^\)]+)\s*\)/g, '![$1]($2)');
+    markdown = markdown.replace(/\\\[([^\]]+)\\\]\(\s*([^\)]+)\s*\)/g, '[$1]($2)');
 
     // Remove remaining ac:link elements
     markdown = markdown.replace(/<ac:link[^>]*>[\s\S]*?<\/ac:link>/g, '');
@@ -356,6 +388,66 @@ export class TransformCommand implements CommandHandler {
       result = result.replace(match[0], replacement);
     }
 
+    // Also handle inline <img> tags that reference /download/attachments/... with optional data-linked-resource-container-id
+    // Example: <img class="confluence-embedded-image" src="/download/attachments/715168874/image.png?version=1&api=v2" data-linked-resource-container-id="715168874" />
+    const inlineImgRegex = /<img[^>]*src="([^"]*\/download\/attachments\/[^"\s]+)"[^>]*>/gi;
+    const inlineImgMatches = Array.from(content.matchAll(inlineImgRegex));
+
+    for (const match of inlineImgMatches) {
+      const src = match[1];
+
+      // Try to extract filename from URL path
+      let filename = src.split('/').pop() || 'image';
+      // Strip query params if present
+      filename = filename.split('?')[0];
+
+      // Try to extract container id from the tag using a secondary regex on the original match
+      const fullTag = match[0];
+      const containerIdMatch = fullTag.match(/data-linked-resource-container-id="([^"<>]+)"/i);
+      const containerId = containerIdMatch ? containerIdMatch[1] : pageId;
+
+      const lastDotIndex = filename.lastIndexOf('.');
+      const extension = lastDotIndex > 0 ? filename.slice(lastDotIndex) : '';
+      const baseName = lastDotIndex > 0 ? filename.slice(0, lastDotIndex) : filename;
+      const slugifiedFilename = slugify(baseName) + extension;
+
+      let replacement = `![${filename}](images/${slugifiedFilename})`;
+
+      if (this.api) {
+        try {
+          // The API expects the filename as-is; try original filename first
+          let imageData = await this.api.downloadAttachment(containerId, filename);
+
+          // Fallback: try URL-decoded filename
+          if (!imageData) {
+            const decoded = decodeURIComponent(filename);
+            if (decoded !== filename) {
+              imageData = await this.api.downloadAttachment(containerId, decoded);
+            }
+          }
+
+          // Another fallback: try removing any appended tokens (some Confluence instances append ids)
+          if (!imageData) {
+            const simpleName = filename.replace(/^[^a-z0-9]+/i, '').split(/[^a-z0-9.\-_]/i)[0];
+            if (simpleName && simpleName !== filename) {
+              imageData = await this.api.downloadAttachment(containerId, simpleName);
+            }
+          }
+
+          if (imageData) {
+            images.push({ filename: slugifiedFilename, data: imageData });
+            console.log(`  ✓ Downloaded inline image: ${filename} -> ${slugifiedFilename}`);
+          } else {
+            console.warn(`  ⚠ Inline image not downloaded: ${filename} (container ${containerId})`);
+          }
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          console.warn(`  ⚠ Error downloading inline image ${filename}:`, errorMessage);
+        }
+      }
+
+      result = result.replace(match[0], replacement);
+    }
     return result;
   }
 
