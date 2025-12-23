@@ -95,7 +95,7 @@ export class TransformCommand implements CommandHandler {
 
       // Show relative path for better readability
       const relativePath = path.relative(this.config.outputDir, htmlFilepath);
-      console.log(`[${i + 1}/${filesToProcess.length}] Checking: ${relativePath}`);
+      console.log(`[${i + 1}/${filesToProcess.length}] Checking: ${htmlFilepath}`);
 
       // Check if MD file already exists
       try {
@@ -230,6 +230,38 @@ export class TransformCommand implements CommandHandler {
    */
   private async htmlToMarkdown(html: string, pageId: string, images: Array<{ filename: string; data: Buffer }>): Promise<string> {
     let markdown = html;
+
+    // Preprocess: convert lists inside table cells to inline text to avoid breaking Markdown tables
+    // Convert <td>...<ul><li>Item</li>...</ul>...</td> -> <td>...• Item; Item; ...</td>
+    try {
+      markdown = markdown.replace(/<td([^>]*)>([\s\S]*?)<\/td>/gi, (full, attrs, inner) => {
+        // If there are list tags inside, replace them with inline bullets separated by semicolons
+        if (/<ul[^>]*>|<ol[^>]*>/i.test(inner)) {
+          // Extract list items
+          const items: string[] = [];
+          const liRegex = /<li[^>]*>([\s\S]*?)<\/li>/gi;
+          for (const m of Array.from(inner.matchAll(liRegex))) {
+            let item = m[1] || '';
+            // Strip tags inside li
+            item = item.replace(/<[^>]+>/g, '').trim();
+            if (item) items.push(item);
+          }
+
+          if (items.length > 0) {
+            const replacement = items.map(i => `• ${i}`).join('; ');
+            // Remove the original lists from inner and append the inline replacement
+            const cleanedInner = inner.replace(/<ul[^>]*>[\s\S]*?<\/ul>/gi, '').replace(/<ol[^>]*>[\s\S]*?<\/ol>/gi, '').trim();
+            const spacer = cleanedInner && !cleanedInner.endsWith(' ') ? ' ' : '';
+            return `<td${attrs}>${cleanedInner}${spacer}${replacement}</td>`;
+          }
+        }
+        return full;
+      });
+    } catch (e) {
+      // Non-fatal: if preprocessing fails, continue without it
+      // eslint-disable-next-line no-console
+      console.warn('List-in-table preprocessing failed:', e instanceof Error ? e.message : e);
+    }
 
     // Transform macros to markdown equivalents (with data fetching)
     markdown = await this.transformMacros(markdown, pageId);
@@ -598,6 +630,9 @@ export class TransformCommand implements CommandHandler {
         result = result.replace(match[0], '<!-- Include macro -->\n\n');
       }
     }
+    // Preserve table-like macros: extract the inner rich-text-body so HTML tables
+    // inside macros (e.g. table-filter) are retained and later converted to Markdown.
+    result = result.replace(/<ac:structured-macro[^>]*ac:name="(?:table|table-filter)"[^>]*>[\s\S]*?<ac:rich-text-body>([\s\S]*?)<\/ac:rich-text-body>[\s\S]*?<\/ac:structured-macro>/gis, '$1\n\n');
 
     // Apply other macro transformations
     result = result
