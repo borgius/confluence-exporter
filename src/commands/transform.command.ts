@@ -406,6 +406,7 @@ export class TransformCommand implements CommandHandler {
    */
   private async transformImages(content: string, pageId: string, images: Array<{ filename: string; data: Buffer }>): Promise<string> {
     let result = content;
+    const downloadPromises: Promise<void>[] = [];
 
     // Match image attachments: <ac:image><ri:attachment ri:filename="..." /></ac:image>
     const imageRegex = /<ac:image[^>]*><ri:attachment[^>]*ri:filename="([^"]+)"[^>]*\/><\/ac:image>/gi;
@@ -425,39 +426,39 @@ export class TransformCommand implements CommandHandler {
 
       // Download the image if API is available
       if (this.api) {
-        try {
-          // Try downloading with original filename first (Confluence API may handle encoding internally)
-          let imageData = await this.api.downloadAttachment(pageId, originalFilename);
+        downloadPromises.push((async () => {
+          try {
+            // Try downloading with original filename first (Confluence API may handle encoding internally)
+            let imageData = await this.api.downloadAttachment(pageId, originalFilename);
 
-          // If that fails, try with URL-encoded filename
-          if (!imageData) {
-            const encodedImageName = encodeURIComponent(originalFilename);
-            imageData = await this.api.downloadAttachment(pageId, encodedImageName);
-          }
+            // If that fails, try with URL-encoded filename
+            if (!imageData) {
+              const encodedImageName = encodeURIComponent(originalFilename);
+              imageData = await this.api.downloadAttachment(pageId, encodedImageName);
+            }
 
-          if (imageData) {
-            images.push({ filename: slugifiedFilename, data: imageData });
-            logger.info(`  ✓ Downloaded image: ${originalFilename} -> ${slugifiedFilename}`);
-          } else {
-            // Image might be on a different page or not exist
-            logger.warn(`  ⚠ Image not found on this page: ${originalFilename} (may be on parent/child page)`);
-            replacement = `![${originalFilename}](images/${slugifiedFilename})`;
+            if (imageData) {
+              images.push({ filename: slugifiedFilename, data: imageData });
+              logger.info(`  ✓ Downloaded image: ${originalFilename} -> ${slugifiedFilename}`);
+            } else {
+              // Image might be on a different page or not exist
+              logger.warn(`  ⚠ Image not found on this page: ${originalFilename} (may be on parent/child page)`);
+            }
+          } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            if (errorMessage.includes('404')) {
+              logger.warn(`  ⚠ Image not attached to this page: ${originalFilename}`);
+            } else {
+              logger.warn(`  ⚠ Error downloading image ${originalFilename}:`, errorMessage);
+            }
           }
-        } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : String(error);
-          if (errorMessage.includes('404')) {
-            logger.warn(`  ⚠ Image not attached to this page: ${originalFilename}`);
-          } else {
-            logger.warn(`  ⚠ Error downloading image ${originalFilename}:`, errorMessage);
-          }
-          // Keep the reference but mark as missing
-          replacement = `![${originalFilename}](images/${slugifiedFilename})`;
-        }
+        })());
       }
 
       logger.debug(`Replacing image tag with markdown: ${replacement}`);
       result = result.replace(match[0], replacement);
     }
+
     logger.debug(`Processed inline <img> tags that reference /download/attachments/...`);
 
     // Also handle inline <img> tags that reference /download/attachments/... with optional data-linked-resource-container-id
@@ -489,41 +490,47 @@ export class TransformCommand implements CommandHandler {
       let replacement = `![${filename}](images/${slugifiedFilename})`;
 
       if (this.api) {
-        try {
-          logger.debug(`Downloading inline image from container ${containerId} with filename ${filename}`);
-          // The API expects the filename as-is; try original filename first
-          let imageData = await this.api.downloadAttachment(containerId, filename);
+        downloadPromises.push((async () => {
+          try {
+            logger.debug(`Downloading inline image from container ${containerId} with filename ${filename}`);
+            // The API expects the filename as-is; try original filename first
+            let imageData = await this.api.downloadAttachment(containerId, filename);
 
-          // Fallback: try URL-decoded filename
-          if (!imageData) {
-            const decoded = decodeURIComponent(filename);
-            if (decoded !== filename) {
-              imageData = await this.api.downloadAttachment(containerId, decoded);
+            // Fallback: try URL-decoded filename
+            if (!imageData) {
+              const decoded = decodeURIComponent(filename);
+              if (decoded !== filename) {
+                imageData = await this.api.downloadAttachment(containerId, decoded);
+              }
             }
-          }
 
-          // Another fallback: try removing any appended tokens (some Confluence instances append ids)
-          if (!imageData) {
-            const simpleName = filename.replace(/^[^a-z0-9]+/i, '').split(/[^a-z0-9.\-_]/i)[0];
-            if (simpleName && simpleName !== filename) {
-              imageData = await this.api.downloadAttachment(containerId, simpleName);
+            // Another fallback: try removing any appended tokens (some Confluence instances append ids)
+            if (!imageData) {
+              const simpleName = filename.replace(/^[^a-z0-9]+/i, '').split(/[^a-z0-9.\-_]/i)[0];
+              if (simpleName && simpleName !== filename) {
+                imageData = await this.api.downloadAttachment(containerId, simpleName);
+              }
             }
-          }
 
-          if (imageData) {
-            images.push({ filename: slugifiedFilename, data: imageData });
-            logger.info(`  ✓ Downloaded inline image: ${filename} -> ${slugifiedFilename}`);
-          } else {
-            logger.warn(`  ⚠ Inline image not downloaded: ${filename} (container ${containerId})`);
+            if (imageData) {
+              images.push({ filename: slugifiedFilename, data: imageData });
+              logger.info(`  ✓ Downloaded inline image: ${filename} -> ${slugifiedFilename}`);
+            } else {
+              logger.warn(`  ⚠ Inline image not downloaded: ${filename} (container ${containerId})`);
+            }
+          } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            logger.warn(`  ⚠ Error downloading inline image ${filename}:`, errorMessage);
           }
-        } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : String(error);
-          logger.warn(`  ⚠ Error downloading inline image ${filename}:`, errorMessage);
-        }
+        })());
       }
 
       result = result.replace(match[0], replacement);
     }
+
+    // Wait for all downloads to complete
+    await Promise.all(downloadPromises);
+
     logger.debug(`Completed processing inline <img> tags`);
     return result;
   }
