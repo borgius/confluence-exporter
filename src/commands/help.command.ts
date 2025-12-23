@@ -16,6 +16,7 @@ export class HelpCommand implements CommandHandler {
     console.log('Commands:');
     console.log('  help                          Show this help message');
     console.log('  index                         Create _index.yaml with page metadata');
+    console.log('  update                        Check for new/updated pages and update _index.yaml');
     console.log('  plan                          Create _queue.yaml for download (from index or specific page tree)');
     console.log('  download                      Download HTML pages from _queue.yaml');
     console.log('  transform                     Transform HTML files to Markdown (checks for missing .md files)');
@@ -28,6 +29,7 @@ export class HelpCommand implements CommandHandler {
     console.log('  -i, --pageId <id>        Download specific page ID only (optional)');
     console.log('  -o, --output <dir>       Output directory (default: ./output)');
     console.log('  -l, --limit <number>     Limit number of pages to process (optional)');
+    console.log('  -f, --force              Force re-download of all pages (skip version check)');
     console.log('  --pageSize <number>      Items per API page (default: 25)');
     console.log('  -h, --help               Show this help message\n');
     console.log('Environment Variables:');
@@ -43,10 +45,14 @@ export class HelpCommand implements CommandHandler {
     console.log('  node index.js index plan download transform -u https://mysite.atlassian.net -n user@example.com -p token -s MYSPACE -l 10\n');
     console.log('  # Create index only (Phase 1)');
     console.log('  node index.js index -u https://mysite.atlassian.net -n user@example.com -p token -s MYSPACE\n');
+    console.log('  # Check for new/updated pages and update existing index');
+    console.log('  node index.js update -u https://mysite.atlassian.net -n user@example.com -p token -s MYSPACE\n');
     console.log('  # Create download queue from existing index (Phase 2)');
     console.log('  node index.js plan -u https://mysite.atlassian.net -n user@example.com -p token -s MYSPACE\n');
     console.log('  # Create download queue for specific page and all children');
     console.log('  node index.js plan -i 123456789 -u https://mysite.atlassian.net -n user@example.com -p token -s MYSPACE\n');
+    console.log('  # Force re-download all pages (ignore version check)');
+    console.log('  node index.js plan --force -u https://mysite.atlassian.net -n user@example.com -p token -s MYSPACE\n');
     console.log('  # Download HTML pages from existing queue (Phase 3)');
     console.log('  node index.js download -u https://mysite.atlassian.net -n user@example.com -p token -s MYSPACE\n');
     console.log('  # Transform HTML to Markdown (Phase 4)');

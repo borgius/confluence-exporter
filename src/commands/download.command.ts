@@ -4,11 +4,12 @@
 
 import type { CommandHandler, CommandContext } from './types.js';
 import { ConfluenceApi } from '../api.js';
-import type { PageTreeNode, PageIndexEntry, ConfluenceConfig } from '../types.js';
-import path, { join } from 'node:path';
-import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
+import type { PageTreeNode, PageIndexEntry, ConfluenceConfig, PageMeta } from '../types.js';
+import path, { join } from 'path';
+import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'fs';
 import { parse } from 'yaml';
 import { format } from 'prettier';
+import { writePageMeta } from '../utils.js';
 
 export class DownloadCommand implements CommandHandler {
   name = 'download';
@@ -161,6 +162,15 @@ export class DownloadCommand implements CommandHandler {
     }
 
     writeFileSync(filepath, formattedHtml, 'utf-8');
+
+    // Write .meta.json sidecar file
+    const meta: PageMeta = {
+      pageId: page.id,
+      version: page.version ?? 0,
+      modifiedDate: page.modifiedDate ?? new Date().toISOString(),
+      downloadedAt: new Date().toISOString()
+    };
+    writePageMeta(filepath, meta);
   }
 
   private slugify(text: string): string {

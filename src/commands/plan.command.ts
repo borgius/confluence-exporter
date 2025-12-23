@@ -8,6 +8,7 @@ import yaml from 'yaml';
 import { ConfluenceApi } from '../api.js';
 import type { ConfluenceConfig, PageIndexEntry, PageTreeNode } from '../types.js';
 import type { CommandContext, CommandHandler } from './types.js';
+import { findExistingFile, readPageMeta, checkPageStatus, writePageMeta } from '../utils.js';
 
 export class PlanCommand implements CommandHandler {
   api: ConfluenceApi;
@@ -26,6 +27,11 @@ export class PlanCommand implements CommandHandler {
     // Create output directory if it doesn't exist
     fs.mkdirSync(this.config.outputDir, { recursive: true });
 
+    // Check for --force flag
+    const forceMode = this.config.force === true;
+    if (forceMode) {
+      console.log('\n⚠️  Force mode enabled - all pages will be queued regardless of status\n');
+    }
 
     // Step 1: Build complete tree structure (no limits applied here)
     this.tree = this.buildTreeFromIndex();
@@ -36,24 +42,31 @@ export class PlanCommand implements CommandHandler {
       this.tree = [this.collectPageTree(this.config.pageId)];
     }
 
-    // Step 3: Create queue from tree (apply limit only here)
+    // Step 2: Create queue from tree with smart filtering
     console.log(`\nCreating download queue from tree...`);
     try {
       const allPages = this.flattenTreeArray(this.tree);
       console.log(`Flattened tree to ${allPages.length} pages`);
       
+      // Apply smart filtering (check if pages need downloading)
+      const { pagesToQueue, stats } = this.filterPagesForQueue(allPages, forceMode);
+      
       // Apply limit if specified (only affects queue, not tree)
-      const pagesToQueue = this.config.limit ? allPages.slice(0, this.config.limit) : allPages;
+      const finalQueue = this.config.limit ? pagesToQueue.slice(0, this.config.limit) : pagesToQueue;
 
-      if (this.config.limit && allPages.length > this.config.limit) {
-        console.log(`Limiting queue to first ${this.config.limit} pages (tree contains all ${allPages.length})`);
+      if (this.config.limit && pagesToQueue.length > this.config.limit) {
+        console.log(`Limiting queue to first ${this.config.limit} pages`);
       }
 
-      this.writeQueue(this.queuePath, this.config, pagesToQueue);
+      this.writeQueue(this.queuePath, this.config, finalQueue);
 
-      console.log(`✓ Queue created: ${this.queuePath}`);
-      console.log(`  Total pages in queue: ${pagesToQueue.length}`);
-      console.log(`  Total pages in tree: ${allPages.length}`);
+      console.log(`\n✓ Queue created: ${this.queuePath}`);
+      console.log(`  📊 Statistics:`);
+      console.log(`     New pages:     ${stats.new}`);
+      console.log(`     Updated pages: ${stats.updated}`);
+      console.log(`     Skipped:       ${stats.skipped} (up-to-date)`);
+      console.log(`     Total queued:  ${finalQueue.length}`);
+      console.log(`     Total in tree: ${allPages.length}`);
     } catch (error) {
       throw new Error(`Failed to create queue from tree: ${error instanceof Error ? error.message : error}`);
     }
@@ -125,6 +138,70 @@ export class PlanCommand implements CommandHandler {
       this.flattenTree(tree, result);
     }
     return result;
+  }
+
+  /**
+   * Filter pages based on whether they need to be downloaded
+   * Checks for existing files and compares versions/dates
+   * 
+   * @param pages - All pages from the tree
+   * @param forceMode - If true, skip all checks and include all pages
+   * @returns Filtered pages with queueReason and statistics
+   */
+  private filterPagesForQueue(
+    pages: PageIndexEntry[],
+    forceMode: boolean
+  ): { pagesToQueue: PageIndexEntry[]; stats: { new: number; updated: number; skipped: number } } {
+    const pagesToQueue: PageIndexEntry[] = [];
+    const stats = { new: 0, updated: 0, skipped: 0 };
+
+    console.log('\n📋 Checking page status...');
+
+    for (const page of pages) {
+      // Force mode: include all pages
+      if (forceMode) {
+        pagesToQueue.push({ ...page, queueReason: 'new' });
+        stats.new++;
+        continue;
+      }
+
+      // Find existing HTML file
+      const existingFile = findExistingFile(this.config.outputDir, page.id);
+      
+      if (!existingFile) {
+        // New page - never downloaded
+        console.log(`  [NEW] ${page.title} (${page.id})`);
+        pagesToQueue.push({ ...page, queueReason: 'new' });
+        stats.new++;
+        continue;
+      }
+
+      // Read existing metadata
+      const existingMeta = readPageMeta(existingFile);
+      const status = checkPageStatus(page, existingMeta);
+
+      if (status.needsDownload) {
+        const details = status.details ? ` - ${status.details}` : '';
+        console.log(`  [UPDATE] ${page.title} (${page.id})${details}`);
+        pagesToQueue.push({ ...page, queueReason: 'updated' });
+        stats.updated++;
+        
+        // If we created a fallback meta (version 0), write proper meta for next time
+        if (existingMeta && existingMeta.version === 0) {
+          writePageMeta(existingFile, {
+            pageId: page.id,
+            version: existingMeta.version,
+            modifiedDate: existingMeta.modifiedDate,
+            downloadedAt: existingMeta.downloadedAt
+          });
+        }
+      } else {
+        console.log(`  [SKIP] ${page.title} (${page.id}) - up to date (v${existingMeta?.version ?? '?'})`);
+        stats.skipped++;
+      }
+    }
+
+    return { pagesToQueue, stats };
   }
 
   /**

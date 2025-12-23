@@ -5,6 +5,7 @@
 
 export { HelpCommand } from './help.command.js';
 export { IndexCommand } from './index.command.js';
+export { UpdateCommand } from './update.command.js';
 export { PlanCommand } from './plan.command.js';
 export { DownloadCommand } from './download.command.js';
 export { TransformCommand } from './transform.command.js';

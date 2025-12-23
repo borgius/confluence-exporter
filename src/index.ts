@@ -17,7 +17,7 @@ async function main() {
   // Parse command line arguments
   const args = minimist(process.argv.slice(2), {
     string: ['url', 'username', 'password', 'space', 'output', 'pageId', 'pageSize', 'limit'],
-    boolean: ['clear'],
+    boolean: ['clear', 'force'],
     alias: {
       u: 'url',
       n: 'username',
@@ -26,6 +26,7 @@ async function main() {
       o: 'output',
       i: 'pageId',
       l: 'limit',
+      f: 'force',
       h: 'help'
     }
   });
@@ -47,7 +48,8 @@ async function main() {
     pageId: args.pageId || undefined,
     pageSize: args.pageSize ? parseInt(args.pageSize, 10) : 100,
     limit: args.limit ? parseInt(args.limit, 10) : undefined,
-    clear: args.clear || false
+    clear: args.clear || false,
+    force: args.force || false
   };
 
   // Validate config (except for help command which doesn't need it)

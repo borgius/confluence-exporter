@@ -4,6 +4,7 @@
 
 import type { 
   Page, 
+  PageMetadata,
   PaginatedResponse, 
   ConfluenceConfig, 
   User,
@@ -89,6 +90,110 @@ export class ConfluenceApi {
       size: data.size,
       _links: data._links
     };
+  }
+
+  /**
+   * Search pages using CQL query (metadata only, no body content)
+   * Useful for finding pages modified after a specific date
+   */
+  async searchPages(cql: string, pageSize: number = 100): Promise<PageMetadata[]> {
+    const results: PageMetadata[] = [];
+    let start = 0;
+    
+    while (true) {
+      const url = `${this.baseUrl}/rest/api/content/search?cql=${encodeURIComponent(cql)}&expand=version,history.lastUpdated,ancestors&start=${start}&limit=${pageSize}`;
+      
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': this.authHeader,
+          'Accept': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to search pages (${url}): ${response.status} ${response.statusText}`);
+      }
+
+      const data = await response.json() as ListPagesResponse;
+      
+      for (const item of data.results) {
+        results.push({
+          id: item.id,
+          title: item.title,
+          version: item.version?.number,
+          parentId: item.ancestors?.[item.ancestors.length - 1]?.id,
+          modifiedDate: item.version?.when || item.history?.lastUpdated?.when
+        });
+      }
+      
+      // Check if there are more pages
+      if (data.results.length < pageSize || !data._links?.next) {
+        break;
+      }
+      
+      start += pageSize;
+    }
+    
+    return results;
+  }
+
+  /**
+   * List pages metadata only (no body content) - more efficient for checking updates
+   */
+  async listPagesMetadata(spaceKey: string, start: number = 0, limit: number = 100): Promise<PaginatedResponse<PageMetadata>> {
+    const url = `${this.baseUrl}/rest/api/content?spaceKey=${spaceKey}&type=page&expand=version,history.lastUpdated,ancestors&start=${start}&limit=${limit}`;
+    
+    const response = await fetch(url, {
+      headers: {
+        'Authorization': this.authHeader,
+        'Accept': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to list pages metadata (${url}): ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json() as ListPagesResponse;
+    
+    return {
+      results: data.results.map((item: RawPage) => ({
+        id: item.id,
+        title: item.title,
+        version: item.version?.number,
+        parentId: item.ancestors?.[item.ancestors.length - 1]?.id,
+        modifiedDate: item.version?.when || item.history?.lastUpdated?.when
+      })),
+      start: data.start,
+      limit: data.limit,
+      size: data.size,
+      _links: data._links
+    };
+  }
+
+  /**
+   * Fetch all pages metadata from a space (handles pagination) - no body content
+   */
+  async *getAllPagesMetadata(spaceKey: string, pageSize: number = 100): AsyncGenerator<PageMetadata & { apiPageNumber: number }> {
+    let start = 0;
+    const limit = pageSize;
+    let apiPageNumber = 1;
+    
+    while (true) {
+      const response = await this.listPagesMetadata(spaceKey, start, limit);
+      
+      for (const page of response.results) {
+        yield { ...page, apiPageNumber };
+      }
+      
+      // Check if there are more pages
+      if (response.results.length < limit || !response._links?.next) {
+        break;
+      }
+      
+      start += limit;
+      apiPageNumber++;
+    }
   }
 
   /**

@@ -16,6 +16,7 @@ export interface ConfluenceConfig {
   pageSize?: number; // Optional: number of items per API page (default: 25)
   limit?: number; // Optional: maximum number of pages to process
   clear?: boolean; // Optional: if specified, clears the output directory before export
+  force?: boolean; // Optional: if specified, forces re-download of all pages regardless of status
 }
 
 // ============================================================================
@@ -106,6 +107,14 @@ export interface AttachmentResponse {
 // Index & Export Types
 // ============================================================================
 
+export interface PageMetadata {
+  id: string;
+  title: string;
+  version?: number;
+  parentId?: string;
+  modifiedDate?: string;
+}
+
 export interface PageIndexEntry {
   id: string;
   title: string;
@@ -114,6 +123,7 @@ export interface PageIndexEntry {
   modifiedDate?: string;
   indexedDate: string;
   pageNumber: number;
+  queueReason?: 'new' | 'updated'; // Why this page is in the queue
 }
 
 export interface PageIndex {
@@ -148,4 +158,15 @@ export interface MarkdownResult {
     filename: string;
     data: Buffer;
   }>;
+}
+
+/**
+ * Metadata sidecar file for tracking download state
+ * Stored as .meta.json alongside each .html file
+ */
+export interface PageMeta {
+  pageId: string;
+  version: number;
+  modifiedDate: string;
+  downloadedAt: string;
 }

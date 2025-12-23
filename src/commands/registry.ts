@@ -4,6 +4,7 @@
 
 import { HelpCommand } from './help.command.js';
 import { IndexCommand } from './index.command.js';
+import { UpdateCommand } from './update.command.js';
 import { PlanCommand } from './plan.command.js';
 import { DownloadCommand } from './download.command.js';
 import { TransformCommand } from './transform.command.js';
@@ -17,6 +18,7 @@ export class CommandRegistry {
     this.handlers = new Map<Command, CommandHandler>([
       ['help', new HelpCommand()],
       ['index', new IndexCommand(config)],
+      ['update', new UpdateCommand(config)],
       ['plan', new PlanCommand(config)],
       ['download', new DownloadCommand(config)],
       ['transform', new TransformCommand(config)]
