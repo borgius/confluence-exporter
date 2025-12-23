@@ -29,6 +29,7 @@ export class HelpCommand implements CommandHandler {
     console.log('  -i, --pageId <id>        Download specific page ID only (optional)');
     console.log('  -o, --output <dir>       Output directory (default: ./output)');
     console.log('  -l, --limit <number>     Limit number of pages to process (optional)');
+    console.log('  --parallel <number>      Number of concurrent operations (default: 5)');
     console.log('  -f, --force              Force re-download of all pages (skip version check)');
     console.log('  --clear                  Clear existing MD files and images before transforming');
     console.log('  --pageSize <number>      Items per API page (default: 25)');
@@ -62,6 +63,8 @@ export class HelpCommand implements CommandHandler {
     console.log('  node index.js transform --clear -u https://mysite.atlassian.net -n user@example.com -p token -s MYSPACE\n');
     console.log('  # Download and transform together');
     console.log('  node index.js download transform -u https://mysite.atlassian.net -n user@example.com -p token -s MYSPACE\n');
+    console.log('  # Download and transform with higher concurrency');
+    console.log('  node index.js download transform --parallel 10 -u https://mysite.atlassian.net -n user@example.com -p token -s MYSPACE\n');
     console.log('  # Download single page HTML only (no index/plan needed)');
     console.log('  node index.js download -i 123456789 -u https://mysite.atlassian.net -n user@example.com -p token -s MYSPACE');
   }

@@ -18,6 +18,7 @@ export interface ConfluenceConfig {
   clear?: boolean; // Optional: if specified, clears the output directory before export
   force?: boolean; // Optional: if specified, forces re-download of all pages regardless of status
   debug?: boolean; // Optional: enable debug logging
+  parallel?: number; // Optional: number of concurrent operations (default: 5)
 }
 
 // ============================================================================

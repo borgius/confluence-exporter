@@ -16,7 +16,7 @@ async function main() {
 
   // Parse command line arguments
   const args = minimist(process.argv.slice(2), {
-    string: ['url', 'username', 'password', 'space', 'output', 'pageId', 'pageSize', 'limit'],
+    string: ['url', 'username', 'password', 'space', 'output', 'pageId', 'pageSize', 'limit', 'parallel'],
     boolean: ['clear', 'force', 'debug'],
     alias: {
       u: 'url',
@@ -50,8 +50,9 @@ async function main() {
     pageSize: args.pageSize ? parseInt(args.pageSize, 10) : 100,
     limit: args.limit ? parseInt(args.limit, 10) : undefined,
     clear: args.clear || false,
-    force: args.force || false
-    , debug: args.debug || false
+    force: args.force || false,
+    debug: args.debug || false,
+    parallel: args.parallel ? parseInt(args.parallel, 10) : 5
   };
 
   // Configure logger debug mode if requested

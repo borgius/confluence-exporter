@@ -86,8 +86,8 @@ export class TransformCommand implements CommandHandler {
       logger.info();
     }
 
-    // Process HTML files in parallel batches of 10
-    const batchSize = 5;
+    // Process HTML files in parallel batches
+    const batchSize = this.config.parallel || 5;
     const batches = [];
     for (let i = 0; i < filesToProcess.length; i += batchSize) {
       batches.push(filesToProcess.slice(i, i + batchSize));

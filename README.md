@@ -2,6 +2,28 @@
 
 A lightweight, standalone CLI tool to export Confluence spaces to Markdown files with hierarchical folder structure.
 
+## Installation
+
+### Via npx (recommended)
+```bash
+npx confluence-export <command> [options]
+```
+
+### Via npm global install
+```bash
+npm install -g confluence-export
+confluence-export <command> [options]
+```
+
+### From source
+```bash
+git clone <repo>
+cd confluence-exporter
+npm install
+npm run build
+node dist/index.js <command> [options]
+```
+
 ## Features
 
 - 🚀 Minimal dependencies (uses native Node.js fetch)
@@ -22,7 +44,13 @@ A lightweight, standalone CLI tool to export Confluence spaces to Markdown files
 ## Usage
 
 ```bash
-node index.js <command> [options]
+npx confluence-export <command> [options]
+```
+
+or if installed globally:
+
+```bash
+confluence-export <command> [options]
 ```
 
 ### Commands
@@ -50,6 +78,7 @@ node index.js index plan download transform [options]
 | `-o` | `--output` | Output directory | `./output` or env: `OUTPUT_DIR` |
 | `-i` | `--pageId` | Single page ID (optional) | none |
 | `-l` | `--limit` | Limit number of pages to process | none |
+| | `--parallel` | Number of concurrent operations | `5` |
 | `-f` | `--force` | Force re-download of all pages (skip version check) | false |
 | | `--clear` | Clear existing MD files and images before transforming | false |
 | | `--pageSize` | API page size | `25` |
@@ -118,6 +147,11 @@ node index.js transform --clear -u https://mysite.atlassian.net -n user@example.
 ### Download and Transform Together
 ```bash
 node index.js download transform -u https://mysite.atlassian.net -n user@example.com -p token -s MYSPACE
+```
+
+### Download and Transform with Higher Concurrency
+```bash
+node index.js download transform --parallel 10 -u https://mysite.atlassian.net -n user@example.com -p token -s MYSPACE
 ```
 
 ### Download Single Page HTML Only (no index/plan needed)
