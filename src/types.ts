@@ -123,7 +123,9 @@ export interface PageIndexEntry {
   modifiedDate?: string;
   indexedDate: string;
   pageNumber: number;
-  queueReason?: 'new' | 'updated'; // Why this page is in the queue
+  downloadedVersion?: number;  // Last downloaded version
+  downloadedAt?: string;       // Last download timestamp (ISO 8601)
+  queueReason?: 'new' | 'updated';
 }
 
 export interface PageIndex {

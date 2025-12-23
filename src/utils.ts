@@ -1,4 +1,4 @@
-import { parse } from 'yaml';
+import { parse, stringify } from 'yaml';
 import fs, { readFileSync, existsSync, writeFileSync, readdirSync, statSync } from 'fs';
 import { join, dirname, basename } from 'path';
 import type { ConfluenceConfig, PageIndexEntry, PageMeta } from './types.js';
@@ -69,68 +69,55 @@ export const pagePath = (id: string, config: ConfluenceConfig) => {
 }
 
 // ============================================================================
-// Page Metadata Utilities
+// Page Metadata Utilities (Index-based)
 // ============================================================================
 
 /**
- * Get the .meta.json path for an HTML file
+ * Read a specific entry from _index.yaml
  */
-export function getMetaPath(htmlPath: string): string {
-  const dir = dirname(htmlPath);
-  const base = basename(htmlPath, '.html');
-  return join(dir, `${base}.meta.json`);
-}
+export function readIndexEntry(indexPath: string, pageId: string): PageIndexEntry | null {
+  if (!existsSync(indexPath)) return null;
 
-/**
- * Read page metadata from .meta.json sidecar file
- * Falls back to file mtime if .meta.json doesn't exist
- * 
- * @param htmlPath - Path to the HTML file
- * @returns PageMeta or null if file doesn't exist
- */
-export function readPageMeta(htmlPath: string): PageMeta | null {
-  if (!existsSync(htmlPath)) {
-    return null;
-  }
-
-  const metaPath = getMetaPath(htmlPath);
-  
-  if (existsSync(metaPath)) {
-    try {
-      const content = readFileSync(metaPath, 'utf-8');
-      return JSON.parse(content) as PageMeta;
-    } catch {
-      // Fall through to mtime fallback
-    }
-  }
-
-  // Fallback: create meta from file mtime
   try {
-    const stats = statSync(htmlPath);
-    // Extract pageId from filename (format: {pageId}-{slug}.html)
-    const base = basename(htmlPath, '.html');
-    const pageId = base.split('-')[0];
-    
-    return {
-      pageId,
-      version: 0, // Unknown version, will trigger re-download on version check
-      modifiedDate: stats.mtime.toISOString(),
-      downloadedAt: stats.mtime.toISOString()
-    };
+    const content = readFileSync(indexPath, 'utf-8');
+    const index: PageIndexEntry[] = parse(content);
+    return index.find(entry => entry.id === pageId) || null;
   } catch {
     return null;
   }
 }
 
 /**
- * Write page metadata to .meta.json sidecar file
- * 
- * @param htmlPath - Path to the HTML file
- * @param meta - Metadata to write
+ * Update a specific entry in _index.yaml
  */
-export function writePageMeta(htmlPath: string, meta: PageMeta): void {
-  const metaPath = getMetaPath(htmlPath);
-  writeFileSync(metaPath, JSON.stringify(meta, null, 2), 'utf-8');
+export function updateIndexEntry(
+  indexPath: string,
+  pageId: string,
+  updates: Partial<PageIndexEntry>
+): boolean {
+  if (!existsSync(indexPath)) return false;
+
+  try {
+    const content = readFileSync(indexPath, 'utf-8');
+    const index: PageIndexEntry[] = parse(content);
+
+    const entryIndex = index.findIndex(entry => entry.id === pageId);
+    if (entryIndex === -1) return false;
+
+    // Update the entry
+    index[entryIndex] = { ...index[entryIndex], ...updates };
+
+    // Write back to file
+    const yamlContent = stringify(index, {
+      indent: 2,
+      lineWidth: 0
+    });
+    writeFileSync(indexPath, yamlContent, 'utf-8');
+
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -174,37 +161,37 @@ export function findExistingFile(outputDir: string, pageId: string): string | nu
 
 /**
  * Check if a page needs to be downloaded based on version comparison
+ * Uses index entry download tracking fields
  * 
  * @param indexEntry - Page entry from index with current version
- * @param existingMeta - Metadata from existing download
  * @returns Object with needsDownload boolean and reason
  */
 export function checkPageStatus(
-  indexEntry: PageIndexEntry,
-  existingMeta: PageMeta | null
+  indexEntry: PageIndexEntry
 ): { needsDownload: boolean; reason: 'new' | 'updated' | 'up-to-date'; details?: string } {
-  if (!existingMeta) {
+  const downloadedVersion = indexEntry.downloadedVersion ?? 0;
+  const currentVersion = indexEntry.version ?? 0;
+
+  // If never downloaded, it's new
+  if (indexEntry.downloadedAt === undefined) {
     return { needsDownload: true, reason: 'new' };
   }
-  
+
   // Compare versions (primary check)
-  const indexVersion = indexEntry.version ?? 0;
-  const metaVersion = existingMeta.version ?? 0;
-  
-  if (indexVersion > metaVersion) {
+  if (currentVersion > downloadedVersion) {
     return { 
       needsDownload: true, 
       reason: 'updated',
-      details: `v${metaVersion} → v${indexVersion}`
+      details: `v${downloadedVersion} → v${currentVersion}`
     };
   }
-  
-  // If versions match but meta version is 0 (fallback), compare dates
-  if (metaVersion === 0 && indexEntry.modifiedDate) {
-    const indexDate = new Date(indexEntry.modifiedDate);
-    const metaDate = new Date(existingMeta.downloadedAt);
+
+  // If versions match but downloadedVersion is 0 (fallback), compare dates
+  if (downloadedVersion === 0 && indexEntry.modifiedDate && indexEntry.downloadedAt) {
+    const currentDate = new Date(indexEntry.modifiedDate);
+    const downloadedDate = new Date(indexEntry.downloadedAt);
     
-    if (indexDate > metaDate) {
+    if (currentDate > downloadedDate) {
       return {
         needsDownload: true,
         reason: 'updated',

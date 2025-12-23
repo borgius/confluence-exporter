@@ -4,12 +4,12 @@
 
 import type { CommandHandler, CommandContext } from './types.js';
 import { ConfluenceApi } from '../api.js';
-import type { PageTreeNode, PageIndexEntry, ConfluenceConfig, PageMeta } from '../types.js';
+import type { PageTreeNode, PageIndexEntry, ConfluenceConfig } from '../types.js';
 import path, { join } from 'path';
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'fs';
 import { parse } from 'yaml';
 import { format } from 'prettier';
-import { writePageMeta } from '../utils.js';
+import { updateIndexEntry } from '../utils.js';
 
 export class DownloadCommand implements CommandHandler {
   name = 'download';
@@ -163,14 +163,16 @@ export class DownloadCommand implements CommandHandler {
 
     writeFileSync(filepath, formattedHtml, 'utf-8');
 
-    // Write .meta.json sidecar file
-    const meta: PageMeta = {
-      pageId: page.id,
-      version: page.version ?? 0,
-      modifiedDate: page.modifiedDate ?? new Date().toISOString(),
+    // Update _index.yaml with download metadata
+    const indexPath = join(this.config.outputDir, '_index.yaml');
+    const success = updateIndexEntry(indexPath, page.id, {
+      downloadedVersion: page.version ?? 0,
       downloadedAt: new Date().toISOString()
-    };
-    writePageMeta(filepath, meta);
+    });
+
+    if (!success) {
+      console.warn(`⚠️  Failed to update index for page ${page.title}`);
+    }
   }
 
   private slugify(text: string): string {

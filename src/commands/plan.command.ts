@@ -5,18 +5,16 @@
 import * as fs from 'fs';
 import path from 'path';
 import yaml from 'yaml';
-import { ConfluenceApi } from '../api.js';
 import type { ConfluenceConfig, PageIndexEntry, PageTreeNode } from '../types.js';
 import type { CommandContext, CommandHandler } from './types.js';
-import { findExistingFile, readPageMeta, checkPageStatus, writePageMeta } from '../utils.js';
+import { findExistingFile, checkPageStatus, updateIndexEntry } from '../utils.js';
 
 export class PlanCommand implements CommandHandler {
-  api: ConfluenceApi;
   queuePath: string;
   treePath: string;
   tree: PageTreeNode[];
+
   constructor(private config: ConfluenceConfig) {
-    this.api = new ConfluenceApi(this.config);
     this.queuePath = path.join(this.config.outputDir, '_queue.yaml');
     this.treePath = path.join(this.config.outputDir, '_tree.yaml');
     this.tree = [];
@@ -157,51 +155,71 @@ export class PlanCommand implements CommandHandler {
 
     console.log('\n📋 Checking page status...');
 
-    for (const page of pages) {
-      // Force mode: include all pages
-      if (forceMode) {
+    // Force mode: include all pages without checking
+    if (forceMode) {
+      for (const page of pages) {
         pagesToQueue.push({ ...page, queueReason: 'new' });
         stats.new++;
-        continue;
       }
+      return { pagesToQueue, stats };
+    }
 
-      // Find existing HTML file
-      const existingFile = findExistingFile(this.config.outputDir, page.id);
-      
-      if (!existingFile) {
-        // New page - never downloaded
-        console.log(`  [NEW] ${page.title} (${page.id})`);
-        pagesToQueue.push({ ...page, queueReason: 'new' });
-        stats.new++;
-        continue;
-      }
+    // Read index once for all lookups
+    const indexPath = path.join(this.config.outputDir, '_index.yaml');
+    const indexEntries = this.loadIndexEntries(indexPath);
+    const indexMap = new Map(indexEntries.map(entry => [entry.id, entry]));
 
-      // Read existing metadata
-      const existingMeta = readPageMeta(existingFile);
-      const status = checkPageStatus(page, existingMeta);
+    console.log(`Loaded ${indexEntries.length} entries from index for status checking`);
 
-      if (status.needsDownload) {
-        const details = status.details ? ` - ${status.details}` : '';
-        console.log(`  [UPDATE] ${page.title} (${page.id})${details}`);
-        pagesToQueue.push({ ...page, queueReason: 'updated' });
-        stats.updated++;
+    // Process pages in batches of 100 for better performance
+    const batchSize = 100;
+    for (let i = 0; i < pages.length; i += batchSize) {
+      const batch = pages.slice(i, i + batchSize);
+      console.log(`Processing batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(pages.length / batchSize)} (${batch.length} pages)`);
+
+      for (const page of batch) {
+        // Check if page has been downloaded by looking at index entry
+        const existingEntry = indexMap.get(page.id);
         
-        // If we created a fallback meta (version 0), write proper meta for next time
-        if (existingMeta && existingMeta.version === 0) {
-          writePageMeta(existingFile, {
-            pageId: page.id,
-            version: existingMeta.version,
-            modifiedDate: existingMeta.modifiedDate,
-            downloadedAt: existingMeta.downloadedAt
-          });
+        if (!existingEntry || !existingEntry.downloadedVersion) {
+          // Page not downloaded yet
+          console.log(`  [NEW] ${page.title} (${page.id})`);
+          pagesToQueue.push({ ...page, queueReason: 'new' });
+          stats.new++;
+          continue;
         }
-      } else {
-        console.log(`  [SKIP] ${page.title} (${page.id}) - up to date (v${existingMeta?.version ?? '?'})`);
-        stats.skipped++;
+
+        // Check if page needs update
+        const status = checkPageStatus(existingEntry);
+
+        if (status.needsDownload) {
+          const details = status.details ? ` - ${status.details}` : '';
+          console.log(`  [UPDATE] ${page.title} (${page.id})${details}`);
+          pagesToQueue.push({ ...page, queueReason: 'updated' });
+          stats.updated++;
+        } else {
+          console.log(`  [SKIP] ${page.title} (${page.id}) - up to date (v${existingEntry.downloadedVersion})`);
+          stats.skipped++;
+        }
       }
     }
 
     return { pagesToQueue, stats };
+  }
+
+  /**
+   * Load all index entries from _index.yaml file
+   */
+  private loadIndexEntries(indexPath: string): PageIndexEntry[] {
+    if (!fs.existsSync(indexPath)) return [];
+
+    try {
+      const content = fs.readFileSync(indexPath, 'utf-8');
+      return yaml.parse(content) as PageIndexEntry[];
+    } catch (error) {
+      console.warn(`Warning: Failed to load index file ${indexPath}: ${error}`);
+      return [];
+    }
   }
 
   /**
