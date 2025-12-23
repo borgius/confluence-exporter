@@ -8,6 +8,8 @@ import prettier from 'prettier';
 import { htmlToMarkdown } from "webforai";
 import { ConfluenceApi } from '../api.js';
 import { pagePath, slugify, unslugify } from '../utils.js';
+import type { Page } from '../types.js';
+import { logger } from '../logger.js';
 import type { CommandContext, CommandHandler } from './types.js';
 import type { ConfluenceConfig } from '../types.js';
 
@@ -20,18 +22,19 @@ interface TreeNode {
 export class TransformCommand implements CommandHandler {
   private pendingIncludes: Array<{ placeholder: string; content: string }> = [];
   private api!: ConfluenceApi;
-  constructor(private config: ConfluenceConfig) { }
+  constructor(private config: ConfluenceConfig) {
+  }
   async execute(_context: CommandContext): Promise<void> {
     this.api = new ConfluenceApi(this.config);
 
-    console.log(`Transforming HTML files to Markdown...`);
-    console.log(`Output directory: ${this.config.outputDir}\n`);
+    logger.info(`Transforming HTML files to Markdown...`);
+    logger.info(`Output directory: ${this.config.outputDir}\n`);
 
     // Clear existing MD files and images if --clear flag is set
     if (this.config.clear) {
-      console.log('Clearing existing .md files and images folders...');
+      logger.info('Clearing existing .md files and images folders...');
       await this.clearExistingFiles(this.config.outputDir);
-      console.log('✓ Cleared existing files\n');
+      logger.info('✓ Cleared existing files\n');
     }
 
     let transformedCount = 0;
@@ -40,9 +43,9 @@ export class TransformCommand implements CommandHandler {
     const htmlFiles: string[] = [];
 
     if (this.config.pageId) {
-      console.log(`Processing specific page: ${this.config.pageId}\n`);
+      logger.info(`Processing specific page: ${this.config.pageId}\n`);
       const pageHtmlPath = pagePath(this.config.pageId, this.config);
-      console.log(`HTML path: ${pageHtmlPath}\n`);
+      logger.info(`HTML path: ${pageHtmlPath}\n`);
       htmlFiles.push(pageHtmlPath);
     } else {
 
@@ -68,19 +71,19 @@ export class TransformCommand implements CommandHandler {
       htmlFiles.push(...await findHtmlFiles(this.config.outputDir));
     }
     if (htmlFiles.length === 0) {
-      console.log('No HTML files found to transform.');
-      console.log('Run the "download" command first to download HTML pages.');
+      logger.info('No HTML files found to transform.');
+      logger.info('Run the "download" command first to download HTML pages.');
       return;
     }
 
     // Apply limit if specified
     const filesToProcess = this.config.limit ? htmlFiles.slice(0, this.config.limit) : htmlFiles;
 
-    console.log(`Found ${htmlFiles.length} HTML files`);
+    logger.info(`Found ${htmlFiles.length} HTML files`);
     if (this.config.limit && htmlFiles.length > this.config.limit) {
-      console.log(`Limiting to first ${this.config.limit} files\n`);
+      logger.info(`Limiting to first ${this.config.limit} files\n`);
     } else {
-      console.log();
+      logger.info();
     }
 
     // Process each HTML file
@@ -95,25 +98,25 @@ export class TransformCommand implements CommandHandler {
 
       // Show relative path for better readability
       const relativePath = path.relative(this.config.outputDir, htmlFilepath);
-      console.log(`[${i + 1}/${filesToProcess.length}] Checking: ${htmlFilepath}`);
+      logger.info(`[${i + 1}/${filesToProcess.length}] Checking: ${htmlFilepath}`);
+      logger.debug(`Processing file ${baseFilename} (ID: ${id})`);
 
       // Check if MD file already exists
       try {
         await fs.access(mdFilepath);
         if (this.config.force) {
-          console.log(`  ⚑ Force: Overwriting existing ${mdFilename}`);
+          logger.info(`  ⚑ Force: Overwriting existing ${mdFilename}`);
           // If forcing, remove existing images folder for this page to avoid stale files
           try {
             const imagesDir = path.join(dirPath, 'images');
             await fs.rm(imagesDir, { recursive: true, force: true });
-            console.log(`  ✓ Removed existing images/ for ${baseFilename}`);
+            logger.info(`  ✓ Removed existing images/ for ${baseFilename}`);
           } catch (err) {
             // Non-fatal if images removal fails
-            // eslint-disable-next-line no-console
-            console.warn(`  ⚠ Could not remove images for ${baseFilename}:`, err instanceof Error ? err.message : err);
+            logger.warn(`  ⚠ Could not remove images for ${baseFilename}:`, err instanceof Error ? err.message : err);
           }
         } else {
-          console.log(`  ⊘ Skipped: ${mdFilename} already exists`);
+          logger.info(`  ⊘ Skipped: ${mdFilename} already exists`);
           skippedCount++;
           continue;
         }
@@ -122,20 +125,26 @@ export class TransformCommand implements CommandHandler {
       }
 
       try {
+        logger.debug(`Reading HTML content from ${htmlFilepath}`);
         // Read HTML content
         const htmlContent = await fs.readFile(htmlFilepath, 'utf-8');
+        logger.debug(`HTML content length: ${htmlContent.length} characters`);
 
         // Parse the title from filename (reverse slugification is lossy, but best effort)
         const title = unslugify(baseFilename);
+        logger.debug(`Parsed title: "${title}"`);
 
+        logger.debug(`Starting HTML to Markdown transformation`);
         // Transform HTML to Markdown
         const images: Array<{ filename: string; data: Buffer }> = [];
         const markdownBody = await this.htmlToMarkdown(htmlContent, id, images);
+        logger.debug(`Transformation complete, markdown length: ${markdownBody.length} characters`);
 
         // Build original page URL (use baseUrl if available)
         const originalUrl = this.config.baseUrl
           ? `${this.config.baseUrl}/pages/viewpage.action?pageId=${id}`
           : '';
+        logger.debug(`Original URL: ${originalUrl || 'none'}`);
 
         // Create front matter
         const frontMatter = [
@@ -145,9 +154,11 @@ export class TransformCommand implements CommandHandler {
           originalUrl ? `url: "${originalUrl}"` : '',
           '---'
         ].filter(Boolean).join('\n');
+        logger.debug(`Front matter created`);
 
         // Before finalizing, replace any pending include placeholders inside markdownBody
         let finalBody = markdownBody;
+        logger.debug(`Processing ${this.pendingIncludes.length} pending includes`);
         for (const include of this.pendingIncludes) {
           // Replace raw placeholder
           finalBody = finalBody.replace(include.placeholder, include.content);
@@ -158,12 +169,15 @@ export class TransformCommand implements CommandHandler {
           const doubleEscaped = escaped.replace(/\\/g, '\\\\');
           finalBody = finalBody.replace(doubleEscaped, include.content);
         }
+        logger.debug(`Include placeholders replaced`);
 
         // Combine front matter and content
         const markdownContent = `${frontMatter}\n\n${finalBody}`;
+        logger.debug(`Combined content length: ${markdownContent.length} characters`);
 
         // Save images if any (in the same directory as the page)
         if (images.length > 0) {
+          logger.debug(`Saving ${images.length} images`);
           const imagesDir = path.join(dirPath, 'images');
           await fs.mkdir(imagesDir, { recursive: true });
 
@@ -171,13 +185,19 @@ export class TransformCommand implements CommandHandler {
             const imagePath = path.join(imagesDir, image.filename);
             await fs.writeFile(imagePath, image.data);
           }
-          console.log(`  ✓ Saved ${images.length} image(s)`);
+          logger.info(`  ✓ Saved ${images.length} image(s)`);
+        } else {
+          logger.debug(`No images to save`);
         }
 
+        logger.debug(`Performing final cleanup`);
         // Final cleanup: unescape any remaining backslashes before [],() produced by converters
         let finalMarkdownToWrite = markdownContent
           // Remove escaped bracket/paren characters produced by converters (e.g. \[ \] \( \) )
           .replace(/\\([\[\]\(\)])/g, '$1');
+        logger.debug(`Final markdown length: ${finalMarkdownToWrite.length} characters`);
+
+        logger.debug(`Formatting with Prettier`);
 
         // Format and write markdown file
         try {
@@ -196,33 +216,35 @@ export class TransformCommand implements CommandHandler {
             tabWidth: 2,
             useTabs: false
           });
+          logger.debug(`Writing formatted markdown to ${mdFilepath}`);
           await fs.writeFile(mdFilepath, formatted, 'utf-8');
-          console.log(`  ✓ Transformed: ${mdFilename} (formatted)`);
+          logger.info(`  ✓ Transformed: ${mdFilename} (formatted)`);
         } catch {
           // If formatting fails, save unformatted markdown
-          console.warn(`  ⚠ Could not format Markdown, saving unformatted`);
+          logger.warn(`  ⚠ Could not format Markdown, saving unformatted`);
+          logger.debug(`Writing unformatted markdown to ${mdFilepath}`);
           await fs.writeFile(mdFilepath, finalMarkdownToWrite, 'utf-8');
-          console.log(`  ✓ Transformed: ${mdFilename}`);
+          logger.info(`  ✓ Transformed: ${mdFilename}`);
         }
 
         transformedCount++;
       } catch (error) {
-        console.error(`  ✗ Failed to transform ${htmlFile}:`, error instanceof Error ? error.message : error);
+        logger.error(`  ✗ Failed to transform ${htmlFile}:`, error instanceof Error ? error.message : error);
         errorCount++;
       }
     }
 
-    console.log(`\n✓ Transformation complete!`);
-    console.log(`  Transformed: ${transformedCount} files`);
-    console.log(`  Skipped: ${skippedCount} files (MD already exists)`);
+    logger.info(`\n✓ Transformation complete!`);
+    logger.info(`  Transformed: ${transformedCount} files`);
+    logger.info(`  Skipped: ${skippedCount} files (MD already exists)`);
     if (errorCount > 0) {
-      console.log(`  Errors: ${errorCount} files`);
+      logger.info(`  Errors: ${errorCount} files`);
     }
 
     // Create links folder and _links.md file
-    console.log('\nCreating links folder and _links.md file...');
+    logger.info('\nCreating links folder and _links.md file...');
     await this.createLinksStructure(this.config.outputDir);
-    console.log('✓ Links structure created');
+    logger.info('✓ Links structure created');
   }
 
   /**
@@ -259,8 +281,7 @@ export class TransformCommand implements CommandHandler {
       });
     } catch (e) {
       // Non-fatal: if preprocessing fails, continue without it
-      // eslint-disable-next-line no-console
-      console.warn('List-in-table preprocessing failed:', e instanceof Error ? e.message : e);
+      logger.warn('List-in-table preprocessing failed:', e instanceof Error ? e.message : e);
     }
 
     // Transform macros to markdown equivalents (with data fetching)
@@ -275,6 +296,7 @@ export class TransformCommand implements CommandHandler {
     // Transform images and download attachments
     markdown = await this.transformImages(markdown, pageId, images);
 
+    logger.debug(`Reving layout, time, and other elements`);
     // Remove layout structure tags (they don't add value in markdown)
     markdown = markdown.replace(/<\/?ac:layout[^>]*>/gi, '');
     markdown = markdown.replace(/<\/?ac:layout-section[^>]*>/gi, '\n\n');
@@ -283,8 +305,17 @@ export class TransformCommand implements CommandHandler {
     // Time elements
     markdown = markdown.replace(/<time[^>]*datetime="([^"]+)"[^>]*\/?>.*?/gi, '$1');
 
+    logger.debug(`Converting HTML to Markdown using webforai`);
     markdown = htmlToMarkdown(markdown);
 
+    // Trim whitespace in Markdown table cells
+    markdown = markdown.replace(/^\|(.+)\|$/gm, (line) => {
+      const parts = line.split('|');
+      const trimmedParts = parts.map(part => part.trim());
+      return trimmedParts.join('|');
+    });
+
+    logger.debug(`Post-processing Markdown content (Pending includes, links, cleanup)`);
     // Replace include placeholders with actual content (handle escaped variants)
     for (const include of this.pendingIncludes) {
       // raw
@@ -297,7 +328,7 @@ export class TransformCommand implements CommandHandler {
       markdown = markdown.replace(doubleEscaped, include.content);
     }
     this.pendingIncludes = [];
-
+    logger.debug(`Pending includes processed`);
     // Restore page links that were escaped by htmlToMarkdown
     // Pattern: \[Title\](url.md) -> [Title](url.md)
     markdown = markdown.replace(/\\?\[([^\]]+)\\?\]\\?\(([^)]+\.md)\\?\)/g, '[$1]($2)');
@@ -310,6 +341,7 @@ export class TransformCommand implements CommandHandler {
     // Remove remaining ac:link elements
     markdown = markdown.replace(/<ac:link[^>]*>[\s\S]*?<\/ac:link>/g, '');
 
+    logger.debug(`Converting headers`);
     // Headers
     markdown = markdown.replace(/<h1[^>]*>(.*?)<\/h1>/gi, '\n# $1\n');
     markdown = markdown.replace(/<h2[^>]*>(.*?)<\/h2>/gi, '\n## $1\n');
@@ -318,6 +350,7 @@ export class TransformCommand implements CommandHandler {
     markdown = markdown.replace(/<h5[^>]*>(.*?)<\/h5>/gi, '\n##### $1\n');
     markdown = markdown.replace(/<h6[^>]*>(.*?)<\/h6>/gi, '\n###### $1\n');
 
+    logger.debug(`Converting text formatting`);
     // Bold and italic
     markdown = markdown.replace(/<strong[^>]*>(.*?)<\/strong>/gi, '**$1**');
     markdown = markdown.replace(/<b[^>]*>(.*?)<\/b>/gi, '**$1**');
@@ -325,9 +358,11 @@ export class TransformCommand implements CommandHandler {
     markdown = markdown.replace(/<i[^>]*>(.*?)<\/i>/gi, '*$1*');
 
     // Links
+    logger.debug(`Converting links`);
     markdown = markdown.replace(/<a[^>]*href="([^"]*)"[^>]*>(.*?)<\/a>/gi, '[$2]($1)');
 
     // Lists
+    logger.debug(`Converting lists`);
     markdown = markdown.replace(/<ul[^>]*>/gi, '\n');
     markdown = markdown.replace(/<\/ul>/gi, '\n');
     markdown = markdown.replace(/<ol[^>]*>/gi, '\n');
@@ -345,6 +380,7 @@ export class TransformCommand implements CommandHandler {
     markdown = markdown.replace(/<br\s*\/?>/gi, '\n');
 
     // Remove remaining HTML tags
+    logger.debug(`Removing remaining HTML tags`);
     markdown = markdown.replace(/<[^>]+>/g, '');
 
     // Clean up HTML entities
@@ -359,6 +395,7 @@ export class TransformCommand implements CommandHandler {
     markdown = markdown.trim();
 
     // Apply markdown cleanup to remove malformed patterns
+    logger.debug(`Cleaning up markdown`);
     markdown = this.cleanMarkdown(markdown);
 
     return markdown;
@@ -376,6 +413,7 @@ export class TransformCommand implements CommandHandler {
 
     for (const match of imageMatches) {
       const originalFilename = match[1];
+      logger.debug(`Processing image attachment: ${originalFilename}`);
 
       // Extract extension and slugify the base name
       const lastDotIndex = originalFilename.lastIndexOf('.');
@@ -399,34 +437,39 @@ export class TransformCommand implements CommandHandler {
 
           if (imageData) {
             images.push({ filename: slugifiedFilename, data: imageData });
-            console.log(`  ✓ Downloaded image: ${originalFilename} -> ${slugifiedFilename}`);
+            logger.info(`  ✓ Downloaded image: ${originalFilename} -> ${slugifiedFilename}`);
           } else {
             // Image might be on a different page or not exist
-            console.warn(`  ⚠ Image not found on this page: ${originalFilename} (may be on parent/child page)`);
+            logger.warn(`  ⚠ Image not found on this page: ${originalFilename} (may be on parent/child page)`);
             replacement = `![${originalFilename}](images/${slugifiedFilename})`;
           }
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : String(error);
           if (errorMessage.includes('404')) {
-            console.warn(`  ⚠ Image not attached to this page: ${originalFilename}`);
+            logger.warn(`  ⚠ Image not attached to this page: ${originalFilename}`);
           } else {
-            console.warn(`  ⚠ Error downloading image ${originalFilename}:`, errorMessage);
+            logger.warn(`  ⚠ Error downloading image ${originalFilename}:`, errorMessage);
           }
           // Keep the reference but mark as missing
           replacement = `![${originalFilename}](images/${slugifiedFilename})`;
         }
       }
 
+      logger.debug(`Replacing image tag with markdown: ${replacement}`);
       result = result.replace(match[0], replacement);
     }
+    logger.debug(`Processed inline <img> tags that reference /download/attachments/...`);
 
     // Also handle inline <img> tags that reference /download/attachments/... with optional data-linked-resource-container-id
     // Example: <img class="confluence-embedded-image" src="/download/attachments/715168874/image.png?version=1&api=v2" data-linked-resource-container-id="715168874" />
     const inlineImgRegex = /<img[^>]*src="([^"]*\/download\/attachments\/[^"\s]+)"[^>]*>/gi;
     const inlineImgMatches = Array.from(content.matchAll(inlineImgRegex));
 
+    logger.debug(`Found ${inlineImgMatches.length} inline <img> tags with /download/attachments/ URLs`);
+
     for (const match of inlineImgMatches) {
       const src = match[1];
+      logger.debug(`Processing inline image src: ${src}`);
 
       // Try to extract filename from URL path
       let filename = src.split('/').pop() || 'image';
@@ -447,6 +490,7 @@ export class TransformCommand implements CommandHandler {
 
       if (this.api) {
         try {
+          logger.debug(`Downloading inline image from container ${containerId} with filename ${filename}`);
           // The API expects the filename as-is; try original filename first
           let imageData = await this.api.downloadAttachment(containerId, filename);
 
@@ -468,18 +512,19 @@ export class TransformCommand implements CommandHandler {
 
           if (imageData) {
             images.push({ filename: slugifiedFilename, data: imageData });
-            console.log(`  ✓ Downloaded inline image: ${filename} -> ${slugifiedFilename}`);
+            logger.info(`  ✓ Downloaded inline image: ${filename} -> ${slugifiedFilename}`);
           } else {
-            console.warn(`  ⚠ Inline image not downloaded: ${filename} (container ${containerId})`);
+            logger.warn(`  ⚠ Inline image not downloaded: ${filename} (container ${containerId})`);
           }
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : String(error);
-          console.warn(`  ⚠ Error downloading inline image ${filename}:`, errorMessage);
+          logger.warn(`  ⚠ Error downloading inline image ${filename}:`, errorMessage);
         }
       }
 
       result = result.replace(match[0], replacement);
     }
+    logger.debug(`Completed processing inline <img> tags`);
     return result;
   }
 
@@ -523,7 +568,7 @@ export class TransformCommand implements CommandHandler {
       const full = await this.htmlToMarkdown(html, page.id || title, []);
       return `\n\n## ${title}\n\n${full}\n\n`;
     } catch (error) {
-      console.warn(`Failed to build include list for ${title}:`, error);
+      logger.warn(`Failed to build include list for ${title}:`, error);
       return `\n\n## ${title}\n\n<!-- failed to include content -->\n\n`;
     }
   }
@@ -563,7 +608,7 @@ export class TransformCommand implements CommandHandler {
             replacement = childPages.map(child => `- [${child.title}](${slugify(child.title)}.md)`).join('\n') + '\n\n';
           }
         } catch (error) {
-          console.warn(`Failed to fetch child pages:`, error);
+          logger.warn(`Failed to fetch child pages:`, error);
         }
       }
 
@@ -584,7 +629,7 @@ export class TransformCommand implements CommandHandler {
             replacement = childPages.map(child => `- [${child.title}](${slugify(child.title)}.md)`).join('\n') + '\n\n';
           }
         } catch (error) {
-          console.warn(`Failed to fetch child pages for ${pageId}:`, error);
+          logger.warn(`Failed to fetch child pages for ${pageId}:`, error);
         }
       }
 
@@ -623,7 +668,7 @@ export class TransformCommand implements CommandHandler {
             result = result.replace(match[0], `<!-- Include: ${includeTitle} (page not found) -->\n\n`);
           }
         } catch (error) {
-          console.warn(`Failed to fetch included page "${includeTitle}":`, error);
+          logger.warn(`Failed to fetch included page "${includeTitle}":`, error);
           result = result.replace(match[0], `<!-- Include: ${includeTitle} (error) -->\n\n`);
         }
       } else {
@@ -771,18 +816,22 @@ export class TransformCommand implements CommandHandler {
     let cleaned = markdown;
 
     // First pass: clean confluence-specific patterns
+    logger.debug('Cleaning Confluence-specific markdown patterns');
     cleaned = this.cleanConfluencePatterns(cleaned);
 
     // Second pass: general cleanup
+    logger.debug('Cleaning general markdown patterns');
     cleaned = this.cleanGeneral(cleaned);
 
     // Third pass: another round of confluence patterns to catch any new issues
+    logger.debug('Cleaning Confluence-specific markdown patterns (second pass)');
     cleaned = this.cleanConfluencePatterns(cleaned);
 
     // Final cleanup of excessive whitespace
     cleaned = cleaned.replace(/\n{4,}/g, '\n\n\n');
     cleaned = cleaned.trim() + '\n';
 
+    logger.debug('Final cleanup of excessive whitespace');
     return cleaned;
   }
 
@@ -828,6 +877,7 @@ export class TransformCommand implements CommandHandler {
 
     // Remove empty headers with just bold/italic markers (no content between them)
     // Match: ## ** or ## * (at end of line)
+    logger.debug('Removing empty headers with only formatting markers');
     cleaned = cleaned.replace(/^#+\s*\*\*\s*$/gm, '');
     cleaned = cleaned.replace(/^#+\s*\*\s*$/gm, '');
     cleaned = cleaned.replace(/^#+\s*__\s*$/gm, '');
@@ -835,33 +885,42 @@ export class TransformCommand implements CommandHandler {
 
     // Remove headers that only contain bold/italic markers across multiple lines
     // Example: ## **\n\n** (with only whitespace between)
+    logger.debug('Removing headers with only formatting markers across multiple lines');
     cleaned = cleaned.replace(/^(#+)\s*\*\*\s*\n+\s*\*\*\s*$/gm, '');
     cleaned = cleaned.replace(/^(#+)\s*\*\s*\n+\s*\*\s*$/gm, '');
 
     // Remove empty bold markers (no content or only whitespace between)
+    logger.debug('Removing empty bold markers');
     cleaned = cleaned.replace(/\*\*\s*\*\*/g, '');
     cleaned = cleaned.replace(/__\s*__/g, '');
 
     // Remove standalone italic markers on their own line
+    logger.debug('Removing standalone italic markers on their own line');
     cleaned = cleaned.replace(/^\s*\*\s*$/gm, '');
     cleaned = cleaned.replace(/^\s*_\s*$/gm, '');
 
     // Remove empty italic markers that span multiple lines (only if truly empty)
+    logger.debug('Removing empty italic markers that span multiple lines'); 
     cleaned = cleaned.replace(/\*\s*\n+\s*\*/g, '\n\n');
 
     // Remove empty links
+    logger.debug('Removing empty links');
     cleaned = cleaned.replace(/\[\s*\]\(\s*\)/g, '');
 
     // Remove empty list items
+    logger.debug('Removing empty list items');
     cleaned = cleaned.replace(/^[-*+]\s*$/gm, '');
 
     // Clean up excessive blank lines (more than 3 consecutive)
+    logger.debug('Cleaning up excessive blank lines');
     cleaned = cleaned.replace(/\n{4,}/g, '\n\n\n');
 
     // Remove trailing whitespace from each line
-    cleaned = cleaned.replace(/[ \t]+$/gm, '');
+    logger.debug('Removing trailing whitespace from each line');
+    cleaned = cleaned.split('\n').map(line => line.trimEnd()).join('\n');
 
     // Ensure single trailing newline at end of file
+    logger.debug('Ensuring single trailing newline at end of file');
     cleaned = cleaned.trim() + '\n';
 
     return cleaned;
@@ -912,11 +971,11 @@ export class TransformCommand implements CommandHandler {
       try {
         await fs.symlink(targetPath, linkPath);
       } catch (error) {
-        console.warn(`  ⚠ Failed to create symlink for ${linkName}:`, error instanceof Error ? error.message : error);
+        logger.warn(`  ⚠ Failed to create symlink for ${linkName}:`, error instanceof Error ? error.message : error);
       }
     }
 
-    console.log(`  ✓ Created ${mdFiles.length} symlinks in links/`);
+    logger.info(`  ✓ Created ${mdFiles.length} symlinks in links/`);
 
     // Build tree structure for _links.md
     const tree = this.buildFileTree(mdFiles);
@@ -939,7 +998,7 @@ export class TransformCommand implements CommandHandler {
       await fs.writeFile(linksFilePath, linksContent, 'utf-8');
     }
 
-    console.log(`  ✓ Created _links.md with tree structure`);
+    logger.info(`  ✓ Created _links.md with tree structure`);
   }
 
   /**
@@ -1012,7 +1071,7 @@ export class TransformCommand implements CommandHandler {
           if (entry.name === 'images' || entry.name === 'links') {
             // Remove entire images and links folders
             await fs.rm(fullPath, { recursive: true, force: true });
-            console.log(`  Removed: ${path.relative(this.config.outputDir, fullPath)}/`);
+            logger.info(`  Removed: ${path.relative(this.config.outputDir, fullPath)}/`);
           } else if (!entry.name.startsWith('_')) {
             // Recursively clear subdirectories (skip _index, _queue, etc.)
             await this.clearExistingFiles(fullPath);
@@ -1020,11 +1079,11 @@ export class TransformCommand implements CommandHandler {
         } else if (entry.isFile() && entry.name.endsWith('.md') && !entry.name.startsWith('_')) {
           // Remove .md files
           await fs.unlink(fullPath);
-          console.log(`  Removed: ${path.relative(this.config.outputDir, fullPath)}`);
+          logger.info(`  Removed: ${path.relative(this.config.outputDir, fullPath)}`);
         }
       }
     } catch (error) {
-      console.warn(`Warning: Could not clear files in ${dir}:`, error instanceof Error ? error.message : error);
+      logger.warn(`Warning: Could not clear files in ${dir}:`, error instanceof Error ? error.message : error);
     }
   }
 }

@@ -17,6 +17,7 @@ export interface ConfluenceConfig {
   limit?: number; // Optional: maximum number of pages to process
   clear?: boolean; // Optional: if specified, clears the output directory before export
   force?: boolean; // Optional: if specified, forces re-download of all pages regardless of status
+  debug?: boolean; // Optional: enable debug logging
 }
 
 // ============================================================================

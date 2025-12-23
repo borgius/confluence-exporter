@@ -17,7 +17,7 @@ async function main() {
   // Parse command line arguments
   const args = minimist(process.argv.slice(2), {
     string: ['url', 'username', 'password', 'space', 'output', 'pageId', 'pageSize', 'limit'],
-    boolean: ['clear', 'force'],
+    boolean: ['clear', 'force', 'debug'],
     alias: {
       u: 'url',
       n: 'username',
@@ -27,6 +27,7 @@ async function main() {
       i: 'pageId',
       l: 'limit',
       f: 'force',
+      d: 'debug',
       h: 'help'
     }
   });
@@ -50,7 +51,15 @@ async function main() {
     limit: args.limit ? parseInt(args.limit, 10) : undefined,
     clear: args.clear || false,
     force: args.force || false
+    , debug: args.debug || false
   };
+
+  // Configure logger debug mode if requested
+  if ((config as any).debug) {
+    // Lazy import to avoid top-level cycles
+    const { logger } = await import('./logger.js');
+    logger.setDebug(true);
+  }
 
   // Validate config (except for help command which doesn't need it)
   if (!config.baseUrl || !config.username || !config.password || !config.spaceKey) {

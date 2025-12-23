@@ -16,16 +16,73 @@ import type {
   AttachmentResult,
   AttachmentResponse
 } from './types.js';
+import { logger } from './logger.js';
+import fs from 'fs/promises';
+import path from 'path';
+import { readFileSync, writeFile } from 'fs';
 
 export class ConfluenceApi {
   private baseUrl: string;
   private authHeader: string;
   private userCache: Map<string, User> = new Map();
+  private cacheFile: string;
+
+  // Default network timeout for fetch requests (ms)
+  private DEFAULT_TIMEOUT = 15000;
 
   constructor(config: ConfluenceConfig) {
     this.baseUrl = config.baseUrl.replace(/\/$/, ''); // Remove trailing slash
     const credentials = Buffer.from(`${config.username}:${config.password}`).toString('base64');
     this.authHeader = `Basic ${credentials}`;
+    
+    // Set up user cache file
+    this.cacheFile = path.join(config.outputDir, '_user_cache.json');
+    this.loadCache();
+  }
+
+  /**
+   * Load user cache from filesystem
+   */
+  private loadCache(): void {
+    try {
+      const data = readFileSync(this.cacheFile, 'utf8');
+      const parsed = JSON.parse(data);
+      this.userCache = new Map(Object.entries(parsed));
+      logger.debug(`Loaded ${this.userCache.size} users from cache`);
+    } catch (err) {
+      // Ignore if file doesn't exist or is invalid
+      logger.debug('No existing user cache found, starting fresh');
+    }
+  }
+
+  /**
+   * Save user cache to filesystem
+   */
+  private async saveCache(): Promise<void> {
+    try {
+      const obj = Object.fromEntries(this.userCache);
+      await fs.writeFile(this.cacheFile, JSON.stringify(obj, null, 2));
+      logger.debug(`Saved ${this.userCache.size} users to cache`);
+    } catch (err) {
+      logger.warn('Failed to save user cache:', err);
+    }
+  }
+
+  /**
+   * Helper to perform fetch with a timeout using AbortController
+   */
+  private async fetchWithTimeout(input: RequestInfo | URL, init?: RequestInit, timeoutMs?: number): Promise<Response> {
+    const timeout = typeof timeoutMs === 'number' ? timeoutMs : this.DEFAULT_TIMEOUT;
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), timeout);
+    try {
+      logger.debug('fetchWithTimeout ->', input, 'timeoutMs=', timeout);
+      const res = await fetch(input, { ...(init || {}), signal: controller.signal } as RequestInit);
+      logger.debug('fetchWithTimeout <-', input, 'status=', res.status);
+      return res;
+    } finally {
+      clearTimeout(id);
+    }
   }
 
   /**
@@ -34,7 +91,7 @@ export class ConfluenceApi {
   async getPage(pageId: string): Promise<Page> {
     const url = `${this.baseUrl}/rest/api/content/${pageId}?expand=body.storage,version,history.lastUpdated`;
     
-    const response = await fetch(url, {
+    const response = await this.fetchWithTimeout(url, {
       headers: {
         'Authorization': this.authHeader,
         'Accept': 'application/json'
@@ -63,7 +120,7 @@ export class ConfluenceApi {
   async listPages(spaceKey: string, start: number = 0, limit: number = 100): Promise<PaginatedResponse<Page>> {
     const url = `${this.baseUrl}/rest/api/content?spaceKey=${spaceKey}&type=page&expand=body.storage,version,history.lastUpdated,ancestors&start=${start}&limit=${limit}`;
     
-    const response = await fetch(url, {
+    const response = await this.fetchWithTimeout(url, {
       headers: {
         'Authorization': this.authHeader,
         'Accept': 'application/json'
@@ -103,7 +160,8 @@ export class ConfluenceApi {
     while (true) {
       const url = `${this.baseUrl}/rest/api/content/search?cql=${encodeURIComponent(cql)}&expand=version,history.lastUpdated,ancestors&start=${start}&limit=${pageSize}`;
       
-      const response = await fetch(url, {
+      logger.debug('downloadAttachment: metadata URL ->', url);
+      const response = await this.fetchWithTimeout(url, {
         headers: {
           'Authorization': this.authHeader,
           'Accept': 'application/json'
@@ -143,7 +201,7 @@ export class ConfluenceApi {
   async listPagesMetadata(spaceKey: string, start: number = 0, limit: number = 100): Promise<PaginatedResponse<PageMetadata>> {
     const url = `${this.baseUrl}/rest/api/content?spaceKey=${spaceKey}&type=page&expand=version,history.lastUpdated,ancestors&start=${start}&limit=${limit}`;
     
-    const response = await fetch(url, {
+    const response = await this.fetchWithTimeout(url, {
       headers: {
         'Authorization': this.authHeader,
         'Accept': 'application/json'
@@ -227,7 +285,7 @@ export class ConfluenceApi {
   async getPageByTitle(spaceKey: string, title: string): Promise<Page | null> {
     const url = `${this.baseUrl}/rest/api/content?spaceKey=${spaceKey}&title=${encodeURIComponent(title)}&expand=body.storage,version`;
     
-    const response = await fetch(url, {
+    const response = await this.fetchWithTimeout(url, {
       headers: {
         'Authorization': this.authHeader,
         'Accept': 'application/json'
@@ -235,7 +293,7 @@ export class ConfluenceApi {
     });
 
     if (!response.ok) {
-      console.warn(`Failed to fetch page by title "${title}": ${response.status}`);
+      logger.warn(`Failed to fetch page by title "${title}": ${response.status}`);
       return null;
     }
 
@@ -268,7 +326,7 @@ export class ConfluenceApi {
     });
 
     if (!response.ok) {
-      console.warn(`Failed to fetch child pages for ${pageId}: ${response.status}`);
+      logger.warn(`Failed to fetch child pages for ${pageId}: ${response.status}`);
       return [];
     }
 
@@ -290,7 +348,7 @@ export class ConfluenceApi {
       // First, get the attachment metadata to get the download URL
       const url = `${this.baseUrl}/rest/api/content/${pageId}/child/attachment?filename=${encodeURIComponent(filename)}`;
       
-      const response = await fetch(url, {
+      const response = await this.fetchWithTimeout(url, {
         headers: {
           'Authorization': this.authHeader,
           'Accept': 'application/json'
@@ -298,34 +356,36 @@ export class ConfluenceApi {
       });
 
       if (!response.ok) {
-        console.warn(`Failed to fetch attachment metadata for ${filename}: ${response.status}`);
+        logger.warn(`Failed to fetch attachment metadata for ${filename}: ${response.status}`);
         return null;
       }
 
       const data = await response.json() as AttachmentResponse;
+      logger.debug('downloadAttachment: metadata results length ->', data.results.length);
       
       if (data.results.length === 0) {
-        console.warn(`Attachment not found: ${filename}`);
+        logger.warn(`Attachment not found: ${filename}`);
         return null;
       }
 
       // Download the actual file
       const downloadUrl = `${this.baseUrl}${data.results[0]._links.download}`;
-      const downloadResponse = await fetch(downloadUrl, {
+      logger.debug('downloadAttachment: download URL ->', downloadUrl);
+      const downloadResponse = await this.fetchWithTimeout(downloadUrl, {
         headers: {
           'Authorization': this.authHeader
         }
       });
 
       if (!downloadResponse.ok) {
-        console.warn(`Failed to download attachment ${filename}: ${downloadResponse.status}`);
+        logger.warn(`Failed to download attachment ${filename}: ${downloadResponse.status}`);
         return null;
       }
 
       const arrayBuffer = await downloadResponse.arrayBuffer();
       return Buffer.from(arrayBuffer);
     } catch (error) {
-      console.warn(`Error downloading attachment ${filename}:`, error);
+      logger.warn(`Error downloading attachment ${filename}:`, error);
       return null;
     }
   }
@@ -343,7 +403,7 @@ export class ConfluenceApi {
     try {
       const url = `${this.baseUrl}/rest/api/user?username=${encodeURIComponent(username)}&expand=details.personal`;
       
-      const response = await fetch(url, {
+      const response = await this.fetchWithTimeout(url, {
         headers: {
           'Authorization': this.authHeader,
           'Accept': 'application/json'
@@ -351,7 +411,7 @@ export class ConfluenceApi {
       });
 
       if (!response.ok) {
-        console.warn(`Failed to fetch user ${username}: ${response.status}`);
+        logger.warn(`Failed to fetch user ${username}: ${response.status}`);
         return null;
       }
 
@@ -359,10 +419,11 @@ export class ConfluenceApi {
       
       // Cache the result
       this.userCache.set(username, data);
+      await this.saveCache();
       
       return data;
     } catch (error) {
-      console.warn(`Error fetching user ${username}:`, error);
+      logger.warn(`Error fetching user ${username}:`, error);
       return null;
     }
   }
@@ -381,7 +442,7 @@ export class ConfluenceApi {
     try {
       const url = `${this.baseUrl}/rest/api/user?key=${encodeURIComponent(userKey)}&expand=details.personal`;
       
-      const response = await fetch(url, {
+      const response = await this.fetchWithTimeout(url, {
         headers: {
           'Authorization': this.authHeader,
           'Accept': 'application/json'
@@ -389,7 +450,7 @@ export class ConfluenceApi {
       });
 
       if (!response.ok) {
-        console.warn(`Failed to fetch user by key ${userKey}: ${response.status}`);
+        logger.warn(`Failed to fetch user by key ${userKey}: ${response.status}`);
         return null;
       }
 
@@ -397,10 +458,11 @@ export class ConfluenceApi {
       
       // Cache the result
       this.userCache.set(cacheKey, data);
+      await this.saveCache();
       
       return data;
     } catch (error) {
-      console.warn(`Error fetching user by key ${userKey}:`, error);
+      logger.warn(`Error fetching user by key ${userKey}:`, error);
       return null;
     }
   }
