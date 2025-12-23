@@ -18,6 +18,7 @@ interface TreeNode {
 }
 
 export class TransformCommand implements CommandHandler {
+  private pendingIncludes: Array<{ placeholder: string; content: string }> = [];
   private api!: ConfluenceApi;
   constructor(private config: ConfluenceConfig) { }
   async execute(_context: CommandContext): Promise<void> {
@@ -125,14 +126,27 @@ export class TransformCommand implements CommandHandler {
         // Create front matter
         const frontMatter = [
           '---',
-          `title: "${title.replace(/"/g, '\\"')}"`,
+          `title: "${title.replace(/"/g, '\\"') }"`,
           `id: "${id}"`,
           originalUrl ? `url: "${originalUrl}"` : '',
           '---'
         ].filter(Boolean).join('\n');
 
+        // Before finalizing, replace any pending include placeholders inside markdownBody
+        let finalBody = markdownBody;
+        for (const include of this.pendingIncludes) {
+          // Replace raw placeholder
+          finalBody = finalBody.replace(include.placeholder, include.content);
+          // Some converters escape underscores/backslashes; also replace escaped variants
+          const escaped = include.placeholder.replace(/_/g, '\\_');
+          finalBody = finalBody.replace(escaped, include.content);
+          // And double-escaped (e.g. \__INCLUDE_1__)
+          const doubleEscaped = escaped.replace(/\\/g, '\\\\');
+          finalBody = finalBody.replace(doubleEscaped, include.content);
+        }
+
         // Combine front matter and content
-        const markdownContent = `${frontMatter}\n\n${markdownBody}`;
+        const markdownContent = `${frontMatter}\n\n${finalBody}`;
 
         // Save images if any (in the same directory as the page)
         if (images.length > 0) {
@@ -190,17 +204,44 @@ export class TransformCommand implements CommandHandler {
   private async htmlToMarkdown(html: string, pageId: string, images: Array<{ filename: string; data: Buffer }>): Promise<string> {
     let markdown = html;
 
+    // Transform macros to markdown equivalents (with data fetching)
+    markdown = await this.transformMacros(markdown, pageId);
+
     // Transform user links first (before removing ac:link)
     markdown = await this.transformUserLinks(markdown);
+
+    // Transform page links to HTML anchor tags (will be converted to MD links later)
+    markdown = await this.transformPageLinks(markdown);
 
     // Transform images and download attachments
     markdown = await this.transformImages(markdown, pageId, images);
 
-    // Transform macros to markdown equivalents (with data fetching)
-    markdown = await this.transformMacros(markdown, pageId);
+    // Remove layout structure tags (they don't add value in markdown)
+    markdown = markdown.replace(/<\/?ac:layout[^>]*>/gi, '');
+    markdown = markdown.replace(/<\/?ac:layout-section[^>]*>/gi, '\n\n');
+    markdown = markdown.replace(/<\/?ac:layout-cell[^>]*>/gi, '\n\n');
+
+    // Time elements
+    markdown = markdown.replace(/<time[^>]*datetime="([^"]+)"[^>]*\/?>.*?/gi, '$1');
 
     markdown = htmlToMarkdown(markdown);
 
+    // Replace include placeholders with actual content (handle escaped variants)
+    for (const include of this.pendingIncludes) {
+      // raw
+      markdown = markdown.replace(include.placeholder, include.content);
+      // escaped underscores (e.g. \_\_INCLUDE_1\_\_)
+      const escaped = include.placeholder.replace(/_/g, '\\_');
+      markdown = markdown.replace(escaped, include.content);
+      // double-escaped (e.g. \\\_\\\_INCLUDE_1\\\_\\\_)
+      const doubleEscaped = escaped.replace(/\\/g, '\\\\');
+      markdown = markdown.replace(doubleEscaped, include.content);
+    }
+    this.pendingIncludes = [];
+
+    // Restore page links that were escaped by htmlToMarkdown
+    // Pattern: \[Title\](url.md) -> [Title](url.md)
+    markdown = markdown.replace(/\\?\[([^\]]+)\\?\]\\?\(([^)]+\.md)\\?\)/g, '[$1]($2)');
 
     // Remove remaining ac:link elements
     markdown = markdown.replace(/<ac:link[^>]*>[\s\S]*?<\/ac:link>/g, '');
@@ -319,14 +360,95 @@ export class TransformCommand implements CommandHandler {
   }
 
   /**
+   * Build a Markdown list from an included page's HTML content.
+   * Prefer extracting <ul>/<ol> list items and anchor links; fall back to full page transform.
+   */
+  private async buildIncludeList(page: Page, title: string): Promise<string> {
+    try {
+      const html = page.body || '';
+
+      // Extract list items inside <ul> or <ol>
+      const listRegex = /<ul[^>]*>([\s\S]*?)<\/ul>/i;
+      const listMatch = html.match(listRegex);
+      if (listMatch) {
+        const itemsHtml = listMatch[1];
+        const itemRegex = /<li[^>]*>([\s\S]*?)<\/li>/gi;
+        const items: string[] = [];
+        for (const m of Array.from(itemsHtml.matchAll(itemRegex))) {
+          let item = m[1].trim();
+          // Convert <a href> to markdown
+          item = item.replace(/<a[^>]*href="([^"]+)"[^>]*>(.*?)<\/a>/gi, '[$2]($1)');
+          // Strip remaining tags
+          item = item.replace(/<[^>]+>/g, '').trim();
+          items.push(`- ${item}`);
+        }
+        if (items.length > 0) {
+          return `\n\n## ${title}\n\n${items.join('\n')}\n\n`;
+        }
+      }
+
+      // If no lists found, look for anchor links
+      const anchorRegex = /<a[^>]*href="([^"]+)"[^>]*>(.*?)<\/a>/gi;
+      const anchors = Array.from(html.matchAll(anchorRegex));
+      if (anchors.length > 0) {
+        const items = anchors.map(a => `- [${a[2].replace(/<[^>]+>/g, '').trim()}](${a[1]})`);
+        return `\n\n## ${title}\n\n${items.join('\n')}\n\n`;
+      }
+
+      // Fall back to full-page transform
+      const full = await this.htmlToMarkdown(html, page.id || title, []);
+      return `\n\n## ${title}\n\n${full}\n\n`;
+    } catch (error) {
+      console.warn(`Failed to build include list for ${title}:`, error);
+      return `\n\n## ${title}\n\n<!-- failed to include content -->\n\n`;
+    }
+  }
+
+  /**
    * Transform Confluence macros to Markdown
    */
   private async transformMacros(content: string, pageId: string): Promise<string> {
     let result = content;
 
+    // Handle children macro - fetch child pages of specified page or current page
+    const childrenRegex = /<ac:structured-macro[^>]*ac:name="children"[^>]*>([\s\S]*?)<\/ac:structured-macro>/gis;
+    const childrenMatches = Array.from(content.matchAll(childrenRegex));
+
+    for (const match of childrenMatches) {
+      let replacement = '<!-- Child Pages -->\n\n';
+      const macroContent = match[1];
+
+      if (this.api) {
+        try {
+          // Check if there's a page parameter
+          const pageParamMatch = macroContent.match(/ri:content-title="([^"]+)"/i);
+          let targetPageId = pageId;
+          let targetTitle = '';
+
+          if (pageParamMatch) {
+            targetTitle = pageParamMatch[1];
+            // Try to find the page by title
+            const targetPage = await this.api.getPageByTitle(this.config.spaceKey, targetTitle);
+            if (targetPage) {
+              targetPageId = targetPage.id;
+            }
+          }
+
+          const childPages = await this.api.getChildPages(targetPageId);
+          if (childPages.length > 0) {
+            replacement = childPages.map(child => `- [${child.title}](${slugify(child.title)}.md)`).join('\n') + '\n\n';
+          }
+        } catch (error) {
+          console.warn(`Failed to fetch child pages:`, error);
+        }
+      }
+
+      result = result.replace(match[0], replacement);
+    }
+
     // Handle list-children macro - fetch actual child pages
     const listChildrenRegex = /<ac:structured-macro[^>]*ac:name="list-children"[^>]*(?:\/>|>.*?<\/ac:structured-macro>)/gis;
-    const listChildrenMatches = Array.from(content.matchAll(listChildrenRegex));
+    const listChildrenMatches = Array.from(result.matchAll(listChildrenRegex));
 
     for (const match of listChildrenMatches) {
       let replacement = '<!-- Child Pages List -->\n\n';
@@ -335,9 +457,7 @@ export class TransformCommand implements CommandHandler {
         try {
           const childPages = await this.api.getChildPages(pageId);
           if (childPages.length > 0) {
-            replacement = '## Child Pages\n\n' +
-              childPages.map(child => `- [${child.title}](${slugify(child.title)}.md)`).join('\n') +
-              '\n\n';
+            replacement = childPages.map(child => `- [${child.title}](${slugify(child.title)}.md)`).join('\n') + '\n\n';
           }
         } catch (error) {
           console.warn(`Failed to fetch child pages for ${pageId}:`, error);
@@ -347,6 +467,46 @@ export class TransformCommand implements CommandHandler {
       result = result.replace(match[0], replacement);
     }
 
+    // Handle include macro - fetch content from included page
+    const includeRegex = /<ac:structured-macro[^>]*ac:name="include"[^>]*>([\s\S]*?)<\/ac:structured-macro>/gis;
+    const includeMatches = Array.from(result.matchAll(includeRegex));
+
+    for (const match of includeMatches) {
+      const macroContent = match[1];
+      const titleMatch = macroContent.match(/ri:content-title="([^"]+)"/i);
+      
+      if (titleMatch && this.api) {
+        const includeTitle = titleMatch[1];
+        try {
+          let includedPage: Page | null;
+          if (includeTitle === "FCS Useful Links") {
+            // Hardcode the pageId for FCS Useful Links
+            includedPage = await this.api.getPage("167810724");
+          } else {
+            includedPage = await this.api.getPageByTitle(this.config.spaceKey, includeTitle);
+          }
+          if (includedPage && includedPage.body) {
+            // Build a concise Markdown list from the included page using the API
+            const listMd = await this.buildIncludeList(includedPage, includeTitle);
+
+            // Generate a unique placeholder per include to avoid collisions
+            const placeholder = `__INCLUDE_${this.pendingIncludes.length + 1}__`;
+
+            // Replace macro with placeholder and remember the content for later
+            result = result.replace(match[0], placeholder);
+            this.pendingIncludes.push({ placeholder, content: listMd });
+          } else {
+            result = result.replace(match[0], `<!-- Include: ${includeTitle} (page not found) -->\n\n`);
+          }
+        } catch (error) {
+          console.warn(`Failed to fetch included page "${includeTitle}":`, error);
+          result = result.replace(match[0], `<!-- Include: ${includeTitle} (error) -->\n\n`);
+        }
+      } else {
+        result = result.replace(match[0], '<!-- Include macro -->\n\n');
+      }
+    }
+
     // Apply other macro transformations
     result = result
       // Code blocks with language
@@ -354,7 +514,29 @@ export class TransformCommand implements CommandHandler {
       // Code blocks without language
       .replace(/<ac:structured-macro[^>]*ac:name="code"[^>]*>.*?<ac:plain-text-body><!\[CDATA\[(.*?)\]\]><\/ac:plain-text-body>.*?<\/ac:structured-macro>/gis, '```\n$1\n```\n\n')
       // Info panels
-      .replace(/<ac:structured-macro[^>]*ac:name="info"[^>]*>.*?<ac:rich-text-body>(.*?)<\/ac:rich-text-body>.*?<\/ac:structured-macro>/gis, '> **Info:** $1\n\n')
+      /* Replace info macro with a concise inline marker using the macro title and body.
+         Desired output example:
+         [i] Here you will find
+         <body content...>
+      */
+      .replace(/<ac:structured-macro[^>]*ac:name="info"[^>]*>([\s\S]*?)<\/ac:structured-macro>/gis, (_match, inner) => {
+        try {
+          // Extract title parameter if present
+          const titleMatch = inner.match(/<ac:parameter[^>]*ac:name="title"[^>]*>([\s\S]*?)<\/ac:parameter>/i);
+          const title = titleMatch ? titleMatch[1].trim() : '';
+
+          // Extract rich-text-body content
+          const bodyMatch = inner.match(/<ac:rich-text-body>([\s\S]*?)<\/ac:rich-text-body>/i);
+          const body = bodyMatch ? bodyMatch[1].trim() : '';
+
+          const titleLine = title ? `[i] ${title}\n\n` : '';
+
+          // Return title marker plus body (body will be further transformed later)
+          return `${titleLine}${body}\n\n`;
+        } catch (e) {
+          return '<!-- Info macro -->\n\n';
+        }
+      })
       // Warning panels
       .replace(/<ac:structured-macro[^>]*ac:name="warning"[^>]*>.*?<ac:rich-text-body>(.*?)<\/ac:rich-text-body>.*?<\/ac:rich-text-body>.*?<\/ac:structured-macro>/gis, '> **Warning:** $1\n\n')
       // Note panels
@@ -367,6 +549,14 @@ export class TransformCommand implements CommandHandler {
       .replace(/<ac:structured-macro[^>]*ac:name="toc"[^>]*(?:\/>|>.*?<\/ac:structured-macro>)/gis, '<!-- Table of Contents -->\n\n')
       // Content by label
       .replace(/<ac:structured-macro[^>]*ac:name="contentbylabel"[^>]*(?:\/>|>.*?<\/ac:structured-macro>)/gis, '<!-- Content by Label -->\n\n')
+      // Livesearch macro
+      .replace(/<ac:structured-macro[^>]*ac:name="livesearch"[^>]*(?:\/>|>.*?<\/ac:structured-macro>)/gis, '<!-- Live Search -->\n\n')
+      // Jira macro
+      .replace(/<ac:structured-macro[^>]*ac:name="jira"[^>]*(?:\/>|>.*?<\/ac:structured-macro>)/gis, '<!-- Jira Issues -->\n\n')
+      // Recently updated macro
+      .replace(/<ac:structured-macro[^>]*ac:name="recently-updated"[^>]*(?:\/>|>.*?<\/ac:structured-macro>)/gis, '<!-- Recently Updated Pages -->\n\n')
+      // Popular labels macro
+      .replace(/<ac:structured-macro[^>]*ac:name="popular-labels"[^>]*(?:\/>|>.*?<\/ac:structured-macro>)/gis, '<!-- Popular Labels -->\n\n')
       // Other macros - convert to comments
       .replace(/<ac:structured-macro[^>]*ac:name="([^"]*)"[^>]*(?:\/>|>.*?<\/ac:structured-macro>)/gis, '<!-- Confluence Macro: $1 -->\n\n');
 
@@ -412,6 +602,36 @@ export class TransformCommand implements CommandHandler {
       } else {
         result = result.replace(match[0], `@user-${userKey.slice(-8)}`);
       }
+    }
+
+    return result;
+  }
+
+  /**
+   * Transform page links to markdown links
+   */
+  private async transformPageLinks(html: string): Promise<string> {
+    let result = html;
+
+    // Match page links by content title - various formats
+    // Format 1: <ac:link><ri:page ri:content-title="Title" /></ac:link>
+    const pageLinkRegex1 = /<ac:link[^>]*>\s*<ri:page[^>]*ri:content-title="([^"]+)"[^>]*\/>\s*<\/ac:link>/gi;
+    const matches1 = Array.from(html.matchAll(pageLinkRegex1));
+
+    for (const match of matches1) {
+      const title = match[1];
+      const link = `[${title}](${slugify(title)}.md)`;
+      result = result.replace(match[0], link);
+    }
+
+    // Format 2: Just <ri:page ri:content-title="Title" /> without ac:link wrapper
+    const pageLinkRegex2 = /<ri:page[^>]*ri:content-title="([^"]+)"[^>]*\/>/gi;
+    const matches2 = Array.from(result.matchAll(pageLinkRegex2));
+
+    for (const match of matches2) {
+      const title = match[1];
+      const link = `[${title}](${slugify(title)}.md)`;
+      result = result.replace(match[0], link);
     }
 
     return result;

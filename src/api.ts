@@ -222,6 +222,39 @@ export class ConfluenceApi {
   }
 
   /**
+   * Get a page by its title in a space
+   */
+  async getPageByTitle(spaceKey: string, title: string): Promise<Page | null> {
+    const url = `${this.baseUrl}/rest/api/content?spaceKey=${spaceKey}&title=${encodeURIComponent(title)}&expand=body.storage,version`;
+    
+    const response = await fetch(url, {
+      headers: {
+        'Authorization': this.authHeader,
+        'Accept': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      console.warn(`Failed to fetch page by title "${title}": ${response.status}`);
+      return null;
+    }
+
+    const data = await response.json() as ListPagesResponse;
+    
+    if (data.results.length === 0) {
+      return null;
+    }
+
+    const page = data.results[0];
+    return {
+      id: page.id,
+      title: page.title,
+      body: page.body?.storage?.value || '',
+      version: page.version?.number,
+    };
+  }
+
+  /**
    * Get child pages of a parent page
    */
   async getChildPages(pageId: string): Promise<Page[]> {
