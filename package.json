@@ -6,6 +6,7 @@
   "license": "MIT",
   "main": "./dist/index.js",
   "bin": {
+    "confluence-exporter": "./dist/index.js",
     "confluence-export": "./dist/index.js"
   },
   "scripts": {
