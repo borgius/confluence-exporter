@@ -1,6 +1,6 @@
 {
   "name": "confluence-exporter",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "type": "module",
   "description": "Minimal standalone CLI tool to export Confluence spaces to Markdown",
   "license": "MIT",
