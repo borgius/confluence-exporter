@@ -76,6 +76,7 @@ node index.js index plan download transform [options]
 | `-p` | `--password` | API token | env: `CONFLUENCE_PASSWORD` |
 | `-s` | `--space` | Space key | env: `CONFLUENCE_SPACE_KEY` |
 | `-o` | `--output` | Output directory | `./output` or env: `CONFLUENCE_OUTPUT_DIR` |
+| `-e` | `--envFile` | Path to .env file | searches up to project root |
 | `-i` | `--pageId` | Single page ID (optional) | none |
 | `-l` | `--limit` | Limit number of pages to process | none |
 | | `--parallel` | Number of concurrent operations | `5` |
@@ -91,6 +92,15 @@ node index.js index plan download transform [options]
 - `CONFLUENCE_PASSWORD`
 - `CONFLUENCE_SPACE_KEY`
 - `CONFLUENCE_OUTPUT_DIR`
+
+### Environment File (.env)
+
+By default, the tool searches for a `.env` file starting from the current directory and moving up the directory tree until it finds one or reaches the project root (identified by a `.git` folder).
+
+You can specify a custom `.env` file path using the `--envFile` / `-e` option:
+```bash
+node index.js sync --envFile /path/to/.env.production
+```
 
 ## Examples
 

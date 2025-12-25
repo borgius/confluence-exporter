@@ -29,6 +29,7 @@ export class HelpCommand implements CommandHandler {
     console.log('  -s, --space <key>        Confluence space key');
     console.log('  -i, --pageId <id>        Download specific page ID only (optional)');
     console.log('  -o, --output <dir>       Output directory (default: ./output)');
+    console.log('  -e, --envFile <path>     Path to .env file (default: searches up to project root)');
     console.log('  -l, --limit <number>     Limit number of pages to process (optional)');
     console.log('  --parallel <number>      Number of concurrent operations (default: 5)');
     console.log('  -f, --force              Force re-download of all pages (skip version check)');
@@ -41,6 +42,9 @@ export class HelpCommand implements CommandHandler {
     console.log('  CONFLUENCE_PASSWORD');
     console.log('  CONFLUENCE_SPACE_KEY');
     console.log('  CONFLUENCE_OUTPUT_DIR\n');
+    console.log('Environment File (.env):');
+    console.log('  By default, searches for .env file from current directory up to project root (.git folder).');
+    console.log('  Use --envFile to specify a custom path.\n');
     console.log('Examples:');
     console.log('  # Full workflow: index, plan, download, and transform');
     console.log('  node index.js index plan download transform -u https://mysite.atlassian.net -n user@example.com -p token -s MYSPACE\n');

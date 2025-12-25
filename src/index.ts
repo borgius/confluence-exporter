@@ -5,20 +5,61 @@
 
 import minimist from 'minimist';
 import { config as loadEnv } from 'dotenv';
-import { promises as fs } from 'fs';
+import { promises as fs, existsSync } from 'fs';
 import path from 'path';
 import { CommandExecutor } from './commands/executor.js';
 import { HelpCommand } from './commands/help.command.js';
 import type { ConfluenceConfig } from './types.js';
 import type { CommandContext } from './commands/types.js';
 
-async function main() {
-  // Load .env file if it exists
-  loadEnv();
+/**
+ * Find and load .env file from current directory up to project root (.git folder)
+ * If envFile is specified, loads from that path directly.
+ * Otherwise searches from current working directory upward until it finds a .env file
+ * or reaches the project root (identified by .git folder) or filesystem root.
+ */
+function loadEnvFromProjectHierarchy(envFile?: string): void {
+  // If explicit envFile is provided, use it directly
+  if (envFile) {
+    const resolvedPath = path.resolve(envFile);
+    if (existsSync(resolvedPath)) {
+      loadEnv({ path: resolvedPath });
+    } else {
+      console.error(`Warning: Specified .env file not found: ${resolvedPath}`);
+    }
+    return;
+  }
 
-  // Parse command line arguments
+  let currentDir = process.cwd();
+  const root = path.parse(currentDir).root;
+  
+  while (currentDir !== root) {
+    const envPath = path.join(currentDir, '.env');
+    const gitPath = path.join(currentDir, '.git');
+    
+    // Check if .env exists in current directory
+    if (existsSync(envPath)) {
+      loadEnv({ path: envPath });
+      return;
+    }
+    
+    // Stop at project root (where .git is located)
+    if (existsSync(gitPath)) {
+      return;
+    }
+    
+    // Move to parent directory
+    currentDir = path.dirname(currentDir);
+  }
+  
+  // Fallback: try loading from cwd (default dotenv behavior)
+  loadEnv();
+}
+
+async function main() {
+  // Parse command line arguments first to get envFile option
   const args = minimist(process.argv.slice(2), {
-    string: ['url', 'username', 'password', 'space', 'output', 'pageId', 'pageSize', 'limit', 'parallel'],
+    string: ['url', 'username', 'password', 'space', 'output', 'pageId', 'pageSize', 'limit', 'parallel', 'envFile'],
     boolean: ['clear', 'force', 'debug'],
     alias: {
       u: 'url',
@@ -30,9 +71,13 @@ async function main() {
       l: 'limit',
       f: 'force',
       d: 'debug',
-      h: 'help'
+      h: 'help',
+      e: 'envFile'
     }
   });
+
+  // Load .env file from specified path, current directory, or any parent up to project root
+  loadEnvFromProjectHierarchy(args.envFile);
 
   // Show help if requested
   if (args.help) {
