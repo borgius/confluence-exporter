@@ -40,7 +40,7 @@ export class HelpCommand implements CommandHandler {
     console.log('  CONFLUENCE_USERNAME');
     console.log('  CONFLUENCE_PASSWORD');
     console.log('  CONFLUENCE_SPACE_KEY');
-    console.log('  OUTPUT_DIR\n');
+    console.log('  CONFLUENCE_OUTPUT_DIR\n');
     console.log('Examples:');
     console.log('  # Full workflow: index, plan, download, and transform');
     console.log('  node index.js index plan download transform -u https://mysite.atlassian.net -n user@example.com -p token -s MYSPACE\n');

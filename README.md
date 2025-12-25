@@ -75,7 +75,7 @@ node index.js index plan download transform [options]
 | `-n` | `--username` | Username/email | env: `CONFLUENCE_USERNAME` |
 | `-p` | `--password` | API token | env: `CONFLUENCE_PASSWORD` |
 | `-s` | `--space` | Space key | env: `CONFLUENCE_SPACE_KEY` |
-| `-o` | `--output` | Output directory | `./output` or env: `OUTPUT_DIR` |
+| `-o` | `--output` | Output directory | `./output` or env: `CONFLUENCE_OUTPUT_DIR` |
 | `-i` | `--pageId` | Single page ID (optional) | none |
 | `-l` | `--limit` | Limit number of pages to process | none |
 | | `--parallel` | Number of concurrent operations | `5` |
@@ -90,7 +90,7 @@ node index.js index plan download transform [options]
 - `CONFLUENCE_USERNAME`
 - `CONFLUENCE_PASSWORD`
 - `CONFLUENCE_SPACE_KEY`
-- `OUTPUT_DIR`
+- `CONFLUENCE_OUTPUT_DIR`
 
 ## Examples
 

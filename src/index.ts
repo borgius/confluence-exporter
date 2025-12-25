@@ -47,7 +47,7 @@ async function main() {
     username: args.username || process.env.CONFLUENCE_USERNAME || '',
     password: args.password || process.env.CONFLUENCE_PASSWORD || '',
     spaceKey: args.space || process.env.CONFLUENCE_SPACE_KEY || '',
-    outputDir: args.output || process.env.OUTPUT_DIR || './output',
+    outputDir: args.output || process.env.CONFLUENCE_OUTPUT_DIR || './output',
     pageId: args.pageId || undefined,
     pageSize: args.pageSize ? parseInt(args.pageSize, 10) : 100,
     limit: args.limit ? parseInt(args.limit, 10) : undefined,

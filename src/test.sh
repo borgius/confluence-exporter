@@ -38,7 +38,7 @@ if [ -z "$CONFLUENCE_BASE_URL" ] || [ -z "$CONFLUENCE_USERNAME" ] || [ -z "$CONF
     echo "  export CONFLUENCE_USERNAME='your-email@example.com'"
     echo "  export CONFLUENCE_PASSWORD='your-api-token'"
     echo "  export CONFLUENCE_SPACE_KEY='YOURSPACE'"
-    echo "  export OUTPUT_DIR='./test-output'  # optional"
+    echo "  export CONFLUENCE_OUTPUT_DIR='./test-output'  # optional"
     echo ""
     echo "Or provide as command line arguments:"
     echo "  npm run start -- <baseUrl> <username> <password> <spaceKey> [outputDir]"
@@ -49,7 +49,7 @@ fi
 # Run the exporter
 echo "🚀 Running export..."
 echo "   Space: $CONFLUENCE_SPACE_KEY"
-echo "   Output: ${OUTPUT_DIR:-./output}"
+echo "   Output: ${CONFLUENCE_OUTPUT_DIR:-./output}"
 echo ""
 
 npm run start

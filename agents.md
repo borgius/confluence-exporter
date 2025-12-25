@@ -624,7 +624,7 @@ node index.js download -u URL -n USER -p PASS -s SPACE -o DIR -i ID
 | `-n` | `--username` | Username/email | env: `CONFLUENCE_USERNAME` |
 | `-p` | `--password` | API token | env: `CONFLUENCE_PASSWORD` |
 | `-s` | `--space` | Space key | env: `CONFLUENCE_SPACE_KEY` |
-| `-o` | `--output` | Output directory | `./output` or env: `OUTPUT_DIR` |
+| `-o` | `--output` | Output directory | `./output` or env: `CONFLUENCE_OUTPUT_DIR` |
 | `-i` | `--pageId` | Single page ID (optional) | none |
 | `-l` | `--limit` | Limit number of pages to process | none |
 | | `--pageSize` | API page size | `25` |
@@ -636,7 +636,7 @@ Fallback if CLI args not provided:
 - `CONFLUENCE_USERNAME`
 - `CONFLUENCE_PASSWORD`
 - `CONFLUENCE_SPACE_KEY`
-- `OUTPUT_DIR`
+- `CONFLUENCE_OUTPUT_DIR`
 
 ### Validation
 Required fields (for `index`, `download`, and `transform` commands):
