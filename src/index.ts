@@ -60,16 +60,20 @@ async function main() {
   // Extract commands from positional arguments
   let commands: string[];
   if (args._.length === 0) {
-    // No commands provided - run full sync workflow
-    const indexPath = path.join(config.outputDir, '_index.yaml');
-    try {
-      await fs.access(indexPath);
-      commands = ['update', 'plan', 'download', 'transform'];
-    } catch {
-      commands = ['index', 'plan', 'download', 'transform'];
-    }
+    // No commands provided - show help
+    commands = ['help'];
   } else {
     commands = args._ as string[];
+    // Handle 'sync' command as alias for default workflow
+    if (commands.length === 1 && commands[0] === 'sync') {
+      const indexPath = path.join(config.outputDir, '_index.yaml');
+      try {
+        await fs.access(indexPath);
+        commands = ['update', 'plan', 'download', 'transform'];
+      } catch {
+        commands = ['index', 'plan', 'download', 'transform'];
+      }
+    }
   }
 
   // Configure logger debug mode if requested

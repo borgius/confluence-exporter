@@ -22,7 +22,6 @@
     "test:coverage": "NODE_OPTIONS=--experimental-vm-modules jest --coverage",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run build",
-    "publish": "npm publish --access public",
     "publish:patch": "npm version patch && npm publish --access public",
     "publish:minor": "npm version minor && npm publish --access public",
     "publish:major": "npm version major && npm publish --access public"
